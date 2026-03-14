@@ -39,7 +39,7 @@ ccindex init
 ```
 
 This will:
-- Parse all `.py`, `.ts`, `.tsx` files with Tree-sitter
+- Parse all `.py`, `.ts`, `.tsx`, `.js`, `.jsx`, `.c`, `.h`, `.cpp`, `.cc`, `.cxx`, `.hpp`, `.hxx` files with Tree-sitter
 - Build a local vector index in `.codebase-context/chroma/`
 - Generate `.codebase-context/repo_map.md`
 - Add `.codebase-context/` entries to `.gitignore`
@@ -90,7 +90,7 @@ ccindex update          Incremental index (changed files only)
 ccindex watch           Real-time file watcher
 ccindex search <query>  Semantic search from terminal
   --top-k N             Number of results (default: 5)
-  --language LANG       Filter by language (python/typescript)
+  --language LANG       Filter by language (python/typescript/javascript/c/cpp)
   --json                Output raw JSON
 ccindex map             Print repo map to stdout
 ccindex stats           Show index statistics
@@ -115,6 +115,9 @@ No other code changes required. See `CODEBASE_CONTEXT.md` for the full spec.
 | `.py`     | Python     | functions, classes, methods |
 | `.ts`     | TypeScript | functions, classes, methods, interfaces, type aliases |
 | `.tsx`    | TSX        | functions, classes, methods, React components |
+| `.js`, `.jsx` | JavaScript | functions, classes, methods |
+| `.c`, `.h` | C         | functions, structs |
+| `.cpp`, `.cc`, `.cxx`, `.hpp`, `.hxx` | C++ | functions, classes, structs, methods |
 
 ## Per-Teammate Setup
 

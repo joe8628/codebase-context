@@ -99,7 +99,7 @@ def extract_signature(
         # Count methods in the body
         method_count = 0
         for child in node.children:
-            if child.type in ("block", "class_body"):
+            if child.type in ("block", "class_body", "field_declaration_list"):
                 for sub in child.children:
                     if sub.type in ("function_definition", "method_definition"):
                         method_count += 1
@@ -140,6 +140,20 @@ def extract_calls(node, source_bytes: bytes) -> list[str]:
     return sorted(calls)
 
 
+def _extract_declarator_name(node, source_bytes: bytes) -> str | None:
+    """Resolve a C/C++ declarator chain to find the function or method name.
+
+    C/C++ function_definition nodes don't have a 'name' field; the name is
+    nested inside: declarator → function_declarator → declarator → identifier.
+    """
+    declarator = node.child_by_field_name("declarator")
+    while declarator is not None:
+        if declarator.type in ("identifier", "field_identifier", "type_identifier"):
+            return _get_node_text(declarator, source_bytes)
+        declarator = declarator.child_by_field_name("declarator")
+    return None
+
+
 def _get_call_name(node, source_bytes: bytes) -> str | None:
     """Extract the function name from a call's function node."""
     if node.type == "identifier":
@@ -171,7 +185,7 @@ def _extract_class_methods(
 
     body = None
     for child in class_node.children:
-        if child.type in ("block", "class_body"):
+        if child.type in ("block", "class_body", "field_declaration_list"):
             body = child
             break
 
@@ -181,9 +195,12 @@ def _extract_class_methods(
     for child in body.children:
         if child.type in ("function_definition", "method_definition"):
             name_node = child.child_by_field_name("name")
-            if name_node is None:
+            if name_node is not None:
+                name = _get_node_text(name_node, source_bytes)
+            else:
+                name = _extract_declarator_name(child, source_bytes)
+            if name is None:
                 continue
-            name = _get_node_text(name_node, source_bytes)
             sym_type = "method"
             source = _get_node_text(child, source_bytes)
             sig = extract_signature(child, source_bytes, config, sym_type, name, class_name)
@@ -273,7 +290,7 @@ def parse_file(filepath: str) -> list[Symbol]:
             return
 
         # --- class ---
-        if node.type in ("class_definition", "class_declaration"):
+        if node.type in ("class_definition", "class_declaration", "class_specifier", "struct_specifier"):
             name_node = node.child_by_field_name("name")
             if name_node is None:
                 return
@@ -358,9 +375,12 @@ def parse_file(filepath: str) -> list[Symbol]:
             "method_definition",
         ):
             name_node = node.child_by_field_name("name")
-            if name_node is None:
+            if name_node is not None:
+                name = _get_node_text(name_node, source_bytes)
+            else:
+                name = _extract_declarator_name(node, source_bytes)
+            if name is None:
                 return
-            name = _get_node_text(name_node, source_bytes)
             # method_definition at top level (not inside class body) is still a function
             sym_type = "function"
             source = _get_node_text(node, source_bytes)
