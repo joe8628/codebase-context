@@ -6,13 +6,29 @@
 
 ## Install
 
+Modern Linux distros (Ubuntu 23.04+, Debian 12+) protect the system Python.
+Use one of these methods:
+
+**Recommended — uv (fastest, handles everything automatically):**
 ```bash
-pip install git+https://github.com/joe8628/codebase-context
+# Install uv if you don't have it
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Install codebase-context into an isolated environment, ccindex goes on PATH
+uv tool install git+https://github.com/joe8628/codebase-context
 ```
 
-With uv (faster):
+**pipx (same idea, pip-compatible):**
 ```bash
-uv pip install git+https://github.com/joe8628/codebase-context
+pipx install git+https://github.com/joe8628/codebase-context
+```
+
+**Manual virtualenv:**
+```bash
+python3 -m venv ~/.venvs/codebase-context
+~/.venvs/codebase-context/bin/pip install git+https://github.com/joe8628/codebase-context
+# Add to PATH (put in ~/.bashrc or ~/.zshrc):
+export PATH="$HOME/.venvs/codebase-context/bin:$PATH"
 ```
 
 ## Quick Start
