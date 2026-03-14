@@ -35,12 +35,6 @@ class Embedder:
                         "Loading embedding model %s (first use — may download ~200MB)...",
                         self.model_name,
                     )
-                    print(
-                        f"[codebase-context] Loading embedding model '{self.model_name}'...\n"
-                        f"  First run: downloads ~200MB to ~/.cache/fastembed/\n"
-                        f"  Subsequent runs use cached model.",
-                        flush=True,
-                    )
                     from fastembed import TextEmbedding
                     self._model = TextEmbedding(self.model_name)
                     logger.info("Embedding model loaded.")

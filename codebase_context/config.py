@@ -51,6 +51,30 @@ LANGUAGES: dict[str, dict] = {
         "name_field":   "name",
         "comment_prefix": "//",
     },
+    ".js": {
+        "name":               "javascript",
+        "tree_sitter_module": "tree_sitter_javascript",
+        "node_types":         [
+            "function_declaration",
+            "class_declaration",
+            "method_definition",
+            "arrow_function",
+        ],
+        "name_field":   "name",
+        "comment_prefix": "//",
+    },
+    ".jsx": {
+        "name":               "javascript",
+        "tree_sitter_module": "tree_sitter_javascript",
+        "node_types":         [
+            "function_declaration",
+            "class_declaration",
+            "method_definition",
+            "arrow_function",
+        ],
+        "name_field":   "name",
+        "comment_prefix": "//",
+    },
 }
 
 # Patterns always skipped during indexing (in addition to .gitignore)
