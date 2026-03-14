@@ -1,0 +1,16 @@
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+dist/
+build/
+*.egg-info/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# codebase-context generated files
+.codebase-context/chroma/
+.codebase-context/index_meta.json
+.codebase-context/mcp.log
