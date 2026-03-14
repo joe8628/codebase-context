@@ -46,8 +46,8 @@ This will:
 - Prompt to add `@.codebase-context/repo_map.md` to `CLAUDE.md`
 - Prompt to install a git post-commit hook for auto-reindexing
 
-> **First run note:** Downloads the Jina embedding model (~550MB) from HuggingFace.
-> Subsequent runs use the cached model from `~/.cache/huggingface/`.
+> **First run note:** Downloads the Jina embedding model (~200MB ONNX) to `~/.cache/fastembed/`.
+> No GPU or CUDA packages required. Subsequent runs use the cached model.
 
 ## CLAUDE.md Setup
 

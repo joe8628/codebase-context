@@ -5,7 +5,7 @@
 | Layer | Technology | Role |
 |-------|-----------|------|
 | Parsing | `tree-sitter` + `tree-sitter-python` / `tree-sitter-typescript` | AST symbol extraction |
-| Embedding | `sentence-transformers` + `jinaai/jina-embeddings-v2-base-code` | Local code embeddings (768-dim) |
+| Embedding | `fastembed` + `jinaai/jina-embeddings-v2-base-code` | Local code embeddings via ONNX Runtime (768-dim, no torch/CUDA) |
 | Vector store | `chromadb` (embedded, no server) | ANN search + metadata filtering |
 | CLI | `click` | `ccindex` command-line interface |
 | MCP server | `mcp` (stdio transport) | Tool exposure to Claude Code agents |

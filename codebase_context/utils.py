@@ -42,7 +42,7 @@ def load_gitignore(project_root: str) -> pathspec.PathSpec:
         lines = gitignore_path.read_text(encoding="utf-8").splitlines()
     else:
         lines = []
-    return pathspec.PathSpec.from_lines("gitwildmatch", lines)
+    return pathspec.PathSpec.from_lines("gitignore", lines)
 
 
 def is_ignored(filepath: str, project_root: str, gitignore: pathspec.PathSpec) -> bool:
