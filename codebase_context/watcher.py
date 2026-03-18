@@ -54,13 +54,13 @@ class _CodebaseEventHandler(FileSystemEventHandler):
                 self._pending.clear()
 
             for filepath, event_type in pending.items():
-            ts = time.strftime("%Y-%m-%dT%H:%M:%S")
-            if event_type == "deleted":
-                self._indexer.remove_file(filepath)
-                print(f"[{ts}] deleted  {filepath}")
-            else:
-                chunks = self._indexer.index_file(filepath)
-                print(f"[{ts}] {event_type:<8} {filepath}  ({chunks} chunks)")
+                ts = time.strftime("%Y-%m-%dT%H:%M:%S")
+                if event_type == "deleted":
+                    self._indexer.remove_file(filepath)
+                    print(f"[{ts}] deleted  {filepath}")
+                else:
+                    chunks = self._indexer.index_file(filepath)
+                    print(f"[{ts}] {event_type:<8} {filepath}  ({chunks} chunks)")
 
             if pending:
                 self._indexer._regenerate_repo_map()
