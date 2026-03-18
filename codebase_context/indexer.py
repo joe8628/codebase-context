@@ -47,6 +47,12 @@ class Indexer:
             logger.warning("No indexable files found in %s", self.root)
             return IndexStats(0, 0, time.time() - start)
 
+        # Pre-warm the embedder so the model download (can be ~200MB on first run)
+        # happens before the tqdm progress bar starts — otherwise the bar stalls at 0%.
+        if show_progress:
+            print("Loading embedding model (downloading if needed, ~200MB)...")
+        self.embedder._get_model()
+
         iter_files = files
         if show_progress:
             try:

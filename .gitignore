@@ -14,3 +14,9 @@ htmlcov/
 .codebase-context/chroma/
 .codebase-context/index_meta.json
 .codebase-context/mcp.log
+
+# Rig session files — ephemeral, not committed
+SCRATCHPAD.md
+
+# Codebase context — local vector DB, not committed
+.codebase-context/chroma/
