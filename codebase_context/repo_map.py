@@ -8,10 +8,13 @@ from pathlib import Path
 
 from codebase_context.config import REPO_MAP_PATH
 from codebase_context.parser import Symbol
+from codebase_context.utils import count_tokens
 
 logger = logging.getLogger(__name__)
 
-_WARN_TOKENS = 8_000
+_WARN_TOKENS  = 32_000
+_MAX_TOKENS   = 32_000  # hard cap; files beyond this depth are omitted
+_PRIORITY_DEPTH = 2     # files at depth <= this are always included
 
 
 def generate_repo_map(project_root: str, symbols_by_file: dict[str, list[Symbol]]) -> str:
@@ -52,7 +55,28 @@ def generate_repo_map(project_root: str, symbols_by_file: dict[str, list[Symbol]
         key=lambda p: (len(Path(p).parts), p),
     )
 
-    for filepath in sorted_files:
+    # Partition: priority files (shallow) always included; deep files added until budget
+    priority = [f for f in sorted_files if len(Path(f).parts) <= _PRIORITY_DEPTH]
+    deep     = [f for f in sorted_files if len(Path(f).parts) >  _PRIORITY_DEPTH]
+
+    # Estimate tokens for the header already in `lines`
+    budget_remaining = _MAX_TOKENS - count_tokens("\n".join(lines))
+
+    # Build the file list to emit, greedily adding deep files within budget
+    files_to_emit: list[str] = []
+    for filepath in priority:
+        files_to_emit.append(filepath)
+    omitted = 0
+    for filepath in deep:
+        syms = symbols_by_file[filepath]
+        estimated = count_tokens(filepath) + len(syms) * 6  # rough chars per symbol line
+        if estimated <= budget_remaining:
+            files_to_emit.append(filepath)
+            budget_remaining -= estimated
+        else:
+            omitted += 1
+
+    for filepath in files_to_emit:
         syms = symbols_by_file[filepath]
         if not syms:
             continue
@@ -87,9 +111,15 @@ def generate_repo_map(project_root: str, symbols_by_file: dict[str, list[Symbol]
 
         lines.append("")
 
+    if omitted:
+        lines.append(
+            f"# [{omitted} file(s) omitted — over token budget. "
+            "Run: ccindex map --full to see all.]"
+        )
+
     result = "\n".join(lines)
 
-    tokens = estimate_tokens(result)
+    tokens = count_tokens(result)
     if tokens > _WARN_TOKENS:
         logger.warning(
             "Repo map is large (%d tokens). Consider excluding more files.", tokens
@@ -113,7 +143,3 @@ def write_repo_map(project_root: str, repo_map: str) -> None:
     path.write_text(repo_map, encoding="utf-8")
     logger.info("Repo map written to %s", path)
 
-
-def estimate_tokens(text: str) -> int:
-    """Rough token estimate: len(text) / 4."""
-    return len(text) // 4

@@ -10,14 +10,13 @@ from pathlib import Path
 
 import pathspec
 
-from codebase_context.config import ALWAYS_IGNORE, INDEX_META_PATH
+from codebase_context.config import ALWAYS_IGNORE, INDEX_META_PATH, SYMBOLS_CACHE_PATH
+from codebase_context.models import IndexMeta
 
 
 def count_tokens(text: str) -> int:
-    """Approximate token count: word count × 1.3 (fast heuristic)."""
-    if not text:
-        return 0
-    return int(len(text.split()) * 1.3)
+    """Approximate token count: len(text) / 4 (fast heuristic, better for code than word-splitting)."""
+    return len(text) // 4
 
 
 def slugify(text: str) -> str:
@@ -28,8 +27,8 @@ def slugify(text: str) -> str:
     slug = re.sub(r"[^a-zA-Z0-9]", "-", text)
     slug = re.sub(r"-+", "-", slug).strip("-")
     if len(slug) > 63:
-        hash_suffix = hashlib.sha256(text.encode()).hexdigest()[:8]
-        slug = slug[:54] + "-" + hash_suffix
+        hash_suffix = hashlib.sha256(text.encode()).hexdigest()[:16]
+        slug = slug[:46] + "-" + hash_suffix
     if len(slug) < 3:
         slug = slug + "xxx"
     return slug.lower()
@@ -82,8 +81,6 @@ def find_project_root(start_path: str = ".") -> str:
 
 def load_index_meta(project_root: str):
     """Loads INDEX_META_PATH or returns an empty IndexMeta if not found."""
-    from codebase_context.indexer import IndexMeta  # local import to avoid circular dep
-
     meta_path = Path(project_root) / INDEX_META_PATH
     if meta_path.exists():
         data = json.loads(meta_path.read_text(encoding="utf-8"))
@@ -94,6 +91,21 @@ def load_index_meta(project_root: str):
         total_chunks=0,
         total_files=0,
     )
+
+
+def load_symbols_cache(project_root: str) -> dict[str, list]:
+    """Loads the symbols cache or returns an empty dict if not found."""
+    cache_path = Path(project_root) / SYMBOLS_CACHE_PATH
+    if cache_path.exists():
+        return json.loads(cache_path.read_text(encoding="utf-8"))
+    return {}
+
+
+def save_symbols_cache(project_root: str, cache: dict[str, list]) -> None:
+    """Persists the symbols cache to SYMBOLS_CACHE_PATH."""
+    cache_path = Path(project_root) / SYMBOLS_CACHE_PATH
+    cache_path.parent.mkdir(parents=True, exist_ok=True)
+    cache_path.write_text(json.dumps(cache), encoding="utf-8")
 
 
 def save_index_meta(project_root: str, meta) -> None:

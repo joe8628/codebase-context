@@ -6,6 +6,7 @@ import asyncio
 import json
 import logging
 import os
+import sys
 from pathlib import Path
 
 from codebase_context.config import DEFAULT_TOP_K, MCP_LOG_PATH
@@ -35,16 +36,19 @@ def run_server() -> None:
     from mcp.server.stdio import stdio_server
     from mcp import types
 
+    from codebase_context.embedder import Embedder
     from codebase_context.retriever import Retriever
 
-    retriever = Retriever(project_root)
-
     # Eagerly load embedding model at startup (so first tool call is fast)
+    embedder = Embedder()
     try:
-        retriever.embedder._get_model()
+        embedder._get_model()
         logger.info("Embedding model loaded at startup.")
     except Exception as e:
-        logger.warning("Could not pre-load embedding model: %s", e)
+        logger.error("Failed to load embedding model: %s", e)
+        sys.exit(1)
+
+    retriever = Retriever(project_root, embedder=embedder)
 
     server = Server("codebase-context")
 

@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from codebase_context.config import DEFAULT_TOP_K, REPO_MAP_PATH
-from codebase_context.embedder import Embedder
+from codebase_context.embedder import Embedder, EmbeddingProvider
 from codebase_context.store import SearchResult, VectorStore
 
 logger = logging.getLogger(__name__)
@@ -44,9 +44,9 @@ def _search_result_to_retrieval(sr: SearchResult) -> RetrievalResult:
 
 
 class Retriever:
-    def __init__(self, project_root: str):
+    def __init__(self, project_root: str, embedder: EmbeddingProvider | None = None):
         self.store    = VectorStore(project_root)
-        self.embedder = Embedder()
+        self.embedder = embedder if embedder is not None else Embedder()
 
     def search(
         self,

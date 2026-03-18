@@ -55,13 +55,14 @@ def test_repo_map_header_contains_stats():
 
 
 def test_repo_map_token_estimate_under_target():
-    from codebase_context.repo_map import generate_repo_map, estimate_tokens
+    from codebase_context.repo_map import generate_repo_map
+    from codebase_context.utils import count_tokens
     symbols_by_file = {
         f"src/module_{i}.py": [make_sym(f"func_{i}", "function", sig=f"def func_{i}()")]
         for i in range(500)
     }
     result = generate_repo_map(".", symbols_by_file)
-    tokens = estimate_tokens(result)
+    tokens = count_tokens(result)
     assert tokens < 8000, f"Repo map too large: {tokens} tokens"
 
 

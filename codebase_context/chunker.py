@@ -79,11 +79,12 @@ def _truncate_to_tokens(text: str, max_tokens: int) -> str:
     if count_tokens(text) <= max_tokens:
         return text
 
-    lines = text.split("\n")
+    budget = max_tokens * 4  # chars per token approximation
+    char_count = 0
     result_lines: list[str] = []
-    for line in lines:
-        result_lines.append(line)
-        if count_tokens("\n".join(result_lines)) > max_tokens:
-            result_lines.pop()
+    for line in text.split("\n"):
+        char_count += len(line) + 1  # +1 for the newline
+        if char_count > budget:
             break
+        result_lines.append(line)
     return "\n".join(result_lines)

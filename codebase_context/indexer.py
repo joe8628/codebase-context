@@ -2,17 +2,18 @@
 
 from __future__ import annotations
 
+import dataclasses
 import logging
 import os
 import time
-from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 
 from codebase_context.chunker import build_chunks
 from codebase_context.config import ALWAYS_IGNORE, LANGUAGES
-from codebase_context.embedder import Embedder
-from codebase_context.parser import parse_file
+from codebase_context.embedder import Embedder, EmbeddingProvider
+from codebase_context.models import IndexMeta, IndexStats
+from codebase_context.parser import Symbol, parse_file
 from codebase_context.repo_map import generate_repo_map, write_repo_map
 from codebase_context.store import VectorStore
 from codebase_context.utils import (
@@ -20,33 +21,20 @@ from codebase_context.utils import (
     is_ignored,
     load_gitignore,
     load_index_meta,
+    load_symbols_cache,
     save_index_meta,
+    save_symbols_cache,
 )
 
 logger = logging.getLogger(__name__)
 
 
-@dataclass
-class IndexMeta:
-    """Persisted to INDEX_META_PATH as JSON. Tracks per-file mtimes."""
-    last_full_index: str               # ISO timestamp
-    file_mtimes:     dict[str, float]  # filepath -> mtime at last index
-    total_chunks:    int
-    total_files:     int
-
-
-@dataclass
-class IndexStats:
-    files_indexed:    int
-    chunks_created:   int
-    duration_seconds: float
-
 
 class Indexer:
-    def __init__(self, project_root: str):
+    def __init__(self, project_root: str, embedder: EmbeddingProvider | None = None):
         self.root     = project_root
         self.store    = VectorStore(project_root)
-        self.embedder = Embedder()
+        self.embedder = embedder if embedder is not None else Embedder()
         self.meta     = load_index_meta(project_root)
 
     def full_index(self, show_progress: bool = True) -> IndexStats:
@@ -85,18 +73,22 @@ class Indexer:
             self.store.upsert(chunks, embeddings)
             total_chunks += len(chunks)
 
-        # Generate and write repo map
+        # Generate and write repo map; persist symbols cache for future incremental runs
         rel_symbols = {
             os.path.relpath(fp, self.root): syms
             for fp, syms in symbols_by_file.items()
         }
+        save_symbols_cache(self.root, {
+            rel_path: [dataclasses.asdict(s) for s in syms]
+            for rel_path, syms in rel_symbols.items()
+        })
         repo_map = generate_repo_map(self.root, rel_symbols)
         write_repo_map(self.root, repo_map)
 
         # Save metadata
         self.meta = IndexMeta(
             last_full_index=datetime.now(tz=timezone.utc).isoformat(),
-            file_mtimes={f: os.path.getmtime(f) for f in files},
+            file_mtimes={os.path.relpath(f, self.root): os.path.getmtime(f) for f in files},
             total_chunks=total_chunks,
             total_files=len(symbols_by_file),
         )
@@ -114,9 +106,20 @@ class Indexer:
         start = time.time()
         files = discover_files(self.root)
 
+        # Remove metadata and store chunks for files deleted since last index
+        known = {os.path.relpath(f, self.root) for f in files}
+        orphans = [p for p in self.meta.file_mtimes if p not in known]
+        if orphans:
+            cache = load_symbols_cache(self.root)
+            for rel_path in orphans:
+                self.store.delete_by_filepath(rel_path)
+                del self.meta.file_mtimes[rel_path]
+                cache.pop(rel_path, None)
+            save_symbols_cache(self.root, cache)
+
         changed = [
             f for f in files
-            if self.meta.file_mtimes.get(f, 0) != os.path.getmtime(f)
+            if self.meta.file_mtimes.get(os.path.relpath(f, self.root), 0) != os.path.getmtime(f)
         ]
 
         if not changed:
@@ -136,10 +139,10 @@ class Indexer:
             self.store.delete_by_filepath(rel_path)
             chunks_created = self.index_file(filepath)
             total_chunks += chunks_created
-            self.meta.file_mtimes[filepath] = os.path.getmtime(filepath)
+            self.meta.file_mtimes[rel_path] = os.path.getmtime(filepath)
 
-        # Regenerate repo map
-        self._regenerate_repo_map(files)
+        # Regenerate repo map from cache (no re-parsing)
+        self._regenerate_repo_map()
 
         self.meta.total_chunks = self.store.count()
         self.meta.total_files = len(files)
@@ -164,25 +167,33 @@ class Indexer:
 
         embeddings = self.embedder.embed([c.text for c in chunks])
         self.store.upsert(chunks, embeddings)
+
+        cache = load_symbols_cache(self.root)
+        cache[rel_path] = [dataclasses.asdict(s) for s in symbols]
+        save_symbols_cache(self.root, cache)
+
         return len(chunks)
 
     def remove_file(self, filepath: str) -> None:
         """Called when a file is deleted."""
         rel_path = os.path.relpath(filepath, self.root)
         self.store.delete_by_filepath(rel_path)
-        if filepath in self.meta.file_mtimes:
-            del self.meta.file_mtimes[filepath]
+        if rel_path in self.meta.file_mtimes:
+            del self.meta.file_mtimes[rel_path]
+
+        cache = load_symbols_cache(self.root)
+        cache.pop(rel_path, None)
+        save_symbols_cache(self.root, cache)
+
         save_index_meta(self.root, self.meta)
 
-    def _regenerate_repo_map(self, files: list[str]) -> None:
-        """Rebuild repo map from all currently-indexed files."""
-        symbols_by_file: dict[str, list] = {}
-        for filepath in files:
-            symbols = parse_file(filepath)
-            if symbols:
-                rel_path = os.path.relpath(filepath, self.root)
-                symbols_by_file[rel_path] = symbols
-
+    def _regenerate_repo_map(self) -> None:
+        """Rebuild repo map from the symbols cache — no re-parsing."""
+        cache = load_symbols_cache(self.root)
+        symbols_by_file = {
+            rel_path: [Symbol(**d) for d in sym_dicts]
+            for rel_path, sym_dicts in cache.items()
+        }
         repo_map = generate_repo_map(self.root, symbols_by_file)
         write_repo_map(self.root, repo_map)
 

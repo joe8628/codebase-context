@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 import threading
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 from codebase_context.config import EMBED_BATCH_SIZE, EMBED_MODEL
 
@@ -12,6 +12,12 @@ if TYPE_CHECKING:
     from fastembed import TextEmbedding
 
 logger = logging.getLogger(__name__)
+
+
+@runtime_checkable
+class EmbeddingProvider(Protocol):
+    def embed(self, texts: list[str]) -> list[list[float]]: ...
+    def embed_one(self, text: str) -> list[float]: ...
 
 
 class Embedder:

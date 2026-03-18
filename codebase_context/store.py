@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import chromadb
+from chromadb.errors import ChromaError
 
 from codebase_context.chunker import Chunk
 from codebase_context.config import CHROMA_DIR, DEFAULT_TOP_K
@@ -58,7 +59,7 @@ class VectorStore:
             results = self._collection.get(where={"filepath": filepath})
             if results["ids"]:
                 self._collection.delete(ids=results["ids"])
-        except Exception as e:
+        except ChromaError as e:
             logger.warning("Error deleting chunks for %s: %s", filepath, e)
 
     def search(
@@ -85,7 +86,7 @@ class VectorStore:
 
         try:
             results = self._collection.query(**kwargs)
-        except Exception as e:
+        except ChromaError as e:
             logger.error("Search error: %s", e)
             return []
 
@@ -107,7 +108,7 @@ class VectorStore:
                 where={"symbol_name": name},
                 include=["documents", "metadatas"],
             )
-        except Exception as e:
+        except ChromaError as e:
             logger.warning("get_by_symbol_name error: %s", e)
             return []
 

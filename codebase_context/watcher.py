@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-import os
 import signal
 import threading
 import time
@@ -29,7 +28,8 @@ class _CodebaseEventHandler(FileSystemEventHandler):
         self._root = project_root
         self._gitignore = load_gitignore(project_root)
         self._pending: dict[str, str] = {}  # filepath -> event type
-        self._lock = threading.Lock()
+        self._lock = threading.Lock()       # guards _pending and _timer
+        self._flush_lock = threading.Lock() # serialises flush executions
         self._timer: threading.Timer | None = None
 
     def _should_handle(self, filepath: str) -> bool:
@@ -48,11 +48,12 @@ class _CodebaseEventHandler(FileSystemEventHandler):
         self._timer.start()
 
     def _flush(self) -> None:
-        with self._lock:
-            pending = dict(self._pending)
-            self._pending.clear()
+        with self._flush_lock:
+            with self._lock:
+                pending = dict(self._pending)
+                self._pending.clear()
 
-        for filepath, event_type in pending.items():
+            for filepath, event_type in pending.items():
             ts = time.strftime("%Y-%m-%dT%H:%M:%S")
             if event_type == "deleted":
                 self._indexer.remove_file(filepath)
@@ -61,20 +62,8 @@ class _CodebaseEventHandler(FileSystemEventHandler):
                 chunks = self._indexer.index_file(filepath)
                 print(f"[{ts}] {event_type:<8} {filepath}  ({chunks} chunks)")
 
-        if pending:
-            # Regenerate repo map after batch
-            from codebase_context.indexer import discover_files
-            from codebase_context.repo_map import generate_repo_map, write_repo_map
-            from codebase_context.parser import parse_file
-
-            files = discover_files(self._root)
-            symbols_by_file: dict[str, list] = {}
-            for f in files:
-                syms = parse_file(f)
-                if syms:
-                    symbols_by_file[os.path.relpath(f, self._root)] = syms
-            repo_map = generate_repo_map(self._root, symbols_by_file)
-            write_repo_map(self._root, repo_map)
+            if pending:
+                self._indexer._regenerate_repo_map()
 
     def on_created(self, event):
         if event.is_directory:
@@ -132,6 +121,8 @@ def watch(project_root: str) -> None:
     print(f"[codebase-context] Watching {project_root}  (Ctrl+C to stop)")
 
     def _stop(signum, frame):
+        if handler._timer is not None:
+            handler._timer.cancel()
         observer.stop()
 
     signal.signal(signal.SIGINT, _stop)

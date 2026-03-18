@@ -6,7 +6,7 @@ from codebase_context.utils import (
 
 
 def test_count_tokens_basic():
-    assert count_tokens("hello world") == pytest.approx(2 * 1.3, abs=1)
+    assert count_tokens("hello world") == len("hello world") // 4  # 11 // 4 = 2
 
 
 def test_count_tokens_empty():
