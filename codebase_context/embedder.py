@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import threading
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
@@ -42,7 +43,8 @@ class Embedder:
                         self.model_name,
                     )
                     from fastembed import TextEmbedding
-                    self._model = TextEmbedding(self.model_name)
+                    cache_dir = os.path.expanduser("~/.cache/fastembed")
+                    self._model = TextEmbedding(self.model_name, cache_dir=cache_dir)
                     logger.info("Embedding model loaded.")
         return self._model
 
