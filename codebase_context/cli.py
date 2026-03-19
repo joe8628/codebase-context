@@ -70,10 +70,7 @@ def init(ctx: click.Context) -> None:
         from codebase_context.watcher import install_git_hook
         install_git_hook(root)
 
-    click.echo(
-        "\nSetup complete! To use the MCP server, add to .claude/mcp.json:\n"
-        '  {"mcpServers": {"codebase-context": {"command": "ccindex", "args": ["serve"]}}}'
-    )
+    _setup_mcp_server(root)
 
 
 @cli.command()
@@ -226,6 +223,38 @@ def serve(ctx: click.Context) -> None:
     """Start MCP server (used by Claude Code)."""
     from codebase_context.mcp_server import run_server
     run_server()
+
+
+_MCP_ENTRY = {"command": "ccindex", "args": ["serve"], "type": "stdio"}
+_MCP_KEY = "codebase-context"
+
+
+def _setup_mcp_server(project_root: str) -> None:
+    """Prompt to add the MCP server entry to .claude/settings.json."""
+    settings_path = Path(project_root) / ".claude" / "settings.json"
+
+    # Check if already configured
+    if settings_path.exists():
+        try:
+            data = json.loads(settings_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            data = {}
+        if _MCP_KEY in data.get("mcpServers", {}):
+            return  # Already present, nothing to do
+
+    if click.confirm("\nAdd MCP server to .claude/settings.json?", default=True):
+        if settings_path.exists():
+            try:
+                data = json.loads(settings_path.read_text(encoding="utf-8"))
+            except json.JSONDecodeError:
+                data = {}
+        else:
+            settings_path.parent.mkdir(parents=True, exist_ok=True)
+            data = {}
+
+        data.setdefault("mcpServers", {})[_MCP_KEY] = _MCP_ENTRY
+        settings_path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+        click.echo("  Added MCP server to .claude/settings.json")
 
 
 def _update_gitignore(project_root: str) -> None:
