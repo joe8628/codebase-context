@@ -50,6 +50,11 @@ def run_server() -> None:
 
     retriever = Retriever(project_root, embedder=embedder)
 
+    from codebase_context.lsp.router import LspRouter
+    import atexit
+    router = LspRouter(project_root)
+    atexit.register(router.shutdown)
+
     server = Server("codebase-context")
 
     @server.list_tools()
@@ -119,6 +124,92 @@ def run_server() -> None:
                     "properties": {},
                 },
             ),
+            types.Tool(
+                name="find_definition",
+                description=(
+                    "Resolve where a symbol at a given position is defined. "
+                    "Use before reading a file to locate the exact definition site. "
+                    "Returns null for stdlib symbols."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "file":      {"type": "string",  "description": "Absolute path to the file"},
+                        "line":      {"type": "integer", "description": "Zero-based line number"},
+                        "character": {"type": "integer", "description": "Zero-based UTF-16 character offset"},
+                    },
+                    "required": ["file", "line", "character"],
+                },
+            ),
+            types.Tool(
+                name="find_references",
+                description=(
+                    "Find all usages of a symbol across the project. "
+                    "Capped at 20 results. Excludes stdlib, node_modules, and .venv paths."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "file":                {"type": "string",  "description": "Absolute path to the file"},
+                        "line":                {"type": "integer", "description": "Zero-based line number"},
+                        "character":           {"type": "integer", "description": "Zero-based UTF-16 character offset"},
+                        "include_declaration": {"type": "boolean", "description": "Include the definition site. Default: false", "default": False},
+                    },
+                    "required": ["file", "line", "character"],
+                },
+            ),
+            types.Tool(
+                name="get_signature",
+                description=(
+                    "Get the type signature and docstring for a symbol at a position. "
+                    "Use this to understand a function's interface before reading its implementation."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "file":      {"type": "string",  "description": "Absolute path to the file"},
+                        "line":      {"type": "integer", "description": "Zero-based line number"},
+                        "character": {"type": "integer", "description": "Zero-based UTF-16 character offset"},
+                    },
+                    "required": ["file", "line", "character"],
+                },
+            ),
+            types.Tool(
+                name="get_call_hierarchy",
+                description=(
+                    "Get what a function calls (outgoing) and what calls it (incoming). "
+                    "Use to understand blast radius before modifying a function."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "file":      {"type": "string", "description": "Absolute path to the file"},
+                        "line":      {"type": "integer", "description": "Zero-based line number"},
+                        "character": {"type": "integer", "description": "Zero-based UTF-16 character offset"},
+                        "direction": {
+                            "type": "string",
+                            "enum": ["incoming", "outgoing", "both"],
+                            "description": "Which direction to query. Default: both",
+                            "default": "both",
+                        },
+                    },
+                    "required": ["file", "line", "character"],
+                },
+            ),
+            types.Tool(
+                name="warm_file",
+                description=(
+                    "Pre-warm the LSP server for a file so subsequent queries are fast. "
+                    "Call this after opening a file, before calling find_definition or find_references."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "file": {"type": "string", "description": "Absolute path to the file"},
+                    },
+                    "required": ["file"],
+                },
+            ),
         ]
 
     @server.call_tool()
@@ -134,6 +225,9 @@ def run_server() -> None:
                 return await _handle_get_symbol(retriever, arguments)
             elif name == "get_repo_map":
                 return await _handle_get_repo_map(retriever, project_root)
+            elif name in ("find_definition", "find_references", "get_signature",
+                          "get_call_hierarchy", "warm_file"):
+                return await _handle_lsp_tool(name, router, arguments, project_root)
             else:
                 return [types.TextContent(
                     type="text",
@@ -230,3 +324,23 @@ async def _handle_get_repo_map(retriever, project_root: str):
     from mcp import types
     content = retriever.get_repo_map(project_root)
     return [types.TextContent(type="text", text=content)]
+
+
+async def _handle_lsp_tool(
+    tool_name: str, router, arguments: dict, project_root: str
+) -> list:
+    from mcp import types
+    from codebase_context.lsp import handlers
+
+    _DISPATCH = {
+        "find_definition":    handlers.handle_find_definition,
+        "find_references":    handlers.handle_find_references,
+        "get_signature":      handlers.handle_get_signature,
+        "get_call_hierarchy": handlers.handle_get_call_hierarchy,
+        "warm_file":          handlers.handle_warm_file,
+    }
+    try:
+        result = _DISPATCH[tool_name](router, arguments, project_root)
+    except TimeoutError:
+        result = {"error": "timeout"}
+    return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
