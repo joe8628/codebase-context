@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
+import subprocess
 import sys
 from pathlib import Path
 
@@ -71,6 +73,8 @@ def init(ctx: click.Context) -> None:
         install_git_hook(root)
 
     _setup_mcp_server(root)
+
+    _setup_lsp_binaries()
 
 
 @cli.command()
@@ -227,6 +231,46 @@ def serve(ctx: click.Context) -> None:
 
 _MCP_ENTRY = {"command": "ccindex", "args": ["serve"], "type": "stdio"}
 _MCP_KEY = "codebase-context"
+
+_LSP_BINARIES = [
+    ("pyright-langserver",         "Python",        "npm install -g pyright"),
+    ("typescript-language-server", "TypeScript/JS",  "npm install -g typescript typescript-language-server"),
+    ("clangd",                     "C/C++",          None),  # system package — manual install
+]
+
+
+def _setup_lsp_binaries() -> None:
+    """Check for LSP binaries and offer to install the npm-based ones."""
+    missing = [
+        (binary, lang, cmd)
+        for binary, lang, cmd in _LSP_BINARIES
+        if not shutil.which(binary)
+    ]
+    if not missing:
+        return
+
+    click.echo("\nLSP code navigation tools require these binaries:")
+    for binary, lang, install_cmd in missing:
+        hint = install_cmd if install_cmd else "sudo apt install clangd  OR  brew install llvm"
+        click.echo(f"  {binary} ({lang})  →  {hint}")
+
+    npm_installable = [(b, l, c) for b, l, c in missing if c]
+    if npm_installable and click.confirm("\nInstall npm-based LSP servers now?", default=True):
+        for binary, _lang, install_cmd in npm_installable:
+            click.echo(f"  Installing {binary}...")
+            result = subprocess.run(
+                install_cmd.split(), capture_output=True, text=True
+            )
+            if result.returncode == 0:
+                click.echo(f"  ✓ {binary} installed")
+            else:
+                click.echo(f"  ✗ {binary} failed: {result.stderr.strip()}")
+
+    clangd_missing = any(c is None for _, _, c in missing)
+    if clangd_missing:
+        click.echo("\n  To install clangd manually:")
+        click.echo("    Ubuntu/Debian:  sudo apt install clangd")
+        click.echo("    macOS:          brew install llvm")
 
 
 def _setup_mcp_server(project_root: str) -> None:
