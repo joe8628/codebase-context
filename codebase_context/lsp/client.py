@@ -8,6 +8,13 @@ import threading
 from pathlib import Path
 from typing import Any
 
+_EXT_TO_LANG = {
+    ".py": "python",
+    ".ts": "typescript", ".tsx": "typescriptreact",
+    ".js": "javascript", ".jsx": "javascriptreact",
+    ".c": "c", ".cpp": "cpp", ".h": "c",
+}
+
 
 class LspClient:
     """Manages one LSP server subprocess.
@@ -57,12 +64,6 @@ class LspClient:
 
     def open_file_lazy(self, path: str) -> None:
         """Open a file by reading it from disk. Infers language from extension."""
-        _EXT_TO_LANG = {
-            ".py": "python",
-            ".ts": "typescript", ".tsx": "typescriptreact",
-            ".js": "javascript", ".jsx": "javascriptreact",
-            ".c": "c", ".cpp": "cpp", ".h": "c",
-        }
         ext = Path(path).suffix
         lang = _EXT_TO_LANG.get(ext, "plaintext")
         try:
