@@ -20,3 +20,8 @@ SCRATCHPAD.md
 
 # Codebase context — local vector DB, not committed
 .codebase-context/chroma/
+
+.rig-verified
+
+# Git worktrees
+.worktrees/
