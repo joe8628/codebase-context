@@ -80,9 +80,11 @@ def init(ctx: click.Context) -> None:
 
 
 @cli.command()
-def doctor() -> None:
-    """Check for required external binaries and offer to install missing ones."""
+@click.pass_context
+def doctor(ctx: click.Context) -> None:
+    """Check binaries and MCP setup; registers memgram if missing."""
     _setup_external_deps()
+    _setup_memgram(ctx.obj["root"])
 
 
 @cli.command()

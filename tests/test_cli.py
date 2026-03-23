@@ -248,3 +248,53 @@ class TestSetupExternalDeps:
             runner = CliRunner()
             result = runner.invoke(_deps_cmd, catch_exceptions=False)
         assert "sudo apt install clangd" in result.output
+
+
+# ---------------------------------------------------------------------------
+# doctor command — memgram registration
+# ---------------------------------------------------------------------------
+
+class TestDoctorMemgram:
+    def test_doctor_registers_memgram_when_missing(self, tmp_project):
+        runner = CliRunner()
+        with patch("codebase_context.cli._setup_external_deps"):
+            result = runner.invoke(
+                cli,
+                ["--root", str(tmp_project), "doctor"],
+                input="y\n",  # accept memgram registration
+                catch_exceptions=False,
+            )
+        settings = tmp_project / ".claude" / "settings.json"
+        assert settings.exists(), result.output
+        data = json.loads(settings.read_text())
+        assert data["mcpServers"]["memgram"]["command"] == "ccindex"
+        assert data["mcpServers"]["memgram"]["args"] == ["mem-serve"]
+
+    def test_doctor_skips_memgram_when_already_present(self, tmp_project):
+        claude_dir = tmp_project / ".claude"
+        claude_dir.mkdir()
+        existing = {"mcpServers": {"memgram": {"command": "ccindex", "args": ["mem-serve"]}}}
+        (claude_dir / "settings.json").write_text(json.dumps(existing))
+
+        runner = CliRunner()
+        with patch("codebase_context.cli._setup_external_deps"):
+            result = runner.invoke(
+                cli,
+                ["--root", str(tmp_project), "doctor"],
+                catch_exceptions=False,
+            )
+        assert "Register memgram" not in result.output
+
+    def test_doctor_skips_memgram_when_user_declines(self, tmp_project):
+        runner = CliRunner()
+        with patch("codebase_context.cli._setup_external_deps"):
+            runner.invoke(
+                cli,
+                ["--root", str(tmp_project), "doctor"],
+                input="n\n",
+                catch_exceptions=False,
+            )
+        settings = tmp_project / ".claude" / "settings.json"
+        if settings.exists():
+            data = json.loads(settings.read_text())
+            assert "memgram" not in data.get("mcpServers", {})
