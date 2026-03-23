@@ -58,3 +58,27 @@ class MemgramStore:
             (limit,),
         ).fetchall()
         return [dict(r) for r in rows]
+
+    def search(self, query: str, type: str | None = None, limit: int = 10) -> list[dict]:
+        """Full-text search over title and content. Optionally filter by type."""
+        if type is not None:
+            rows = self._con.execute(
+                "SELECT o.id, o.title, o.content, o.type, o.created_at "
+                "FROM obs_fts f JOIN observations o ON f.rowid = o.id "
+                "WHERE obs_fts MATCH ? AND o.type = ? "
+                "ORDER BY rank LIMIT ?",
+                (query, type, limit),
+            ).fetchall()
+        else:
+            rows = self._con.execute(
+                "SELECT o.id, o.title, o.content, o.type, o.created_at "
+                "FROM obs_fts f JOIN observations o ON f.rowid = o.id "
+                "WHERE obs_fts MATCH ? "
+                "ORDER BY rank LIMIT ?",
+                (query, limit),
+            ).fetchall()
+        return [dict(r) for r in rows]
+
+    def session_end(self, summary: str) -> None:
+        """Record a session-end observation with the given summary."""
+        self.save("Session ended", summary, "session_end")

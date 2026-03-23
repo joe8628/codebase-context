@@ -52,3 +52,40 @@ def test_context_result_has_required_fields(store):
     assert "content" in result
     assert "type" in result
     assert "created_at" in result
+
+
+def test_search_finds_by_title(store):
+    store.save("Authentication refactor", "changed login flow", "decision")
+    store.save("Unrelated memory", "something else", "handoff")
+    results = store.search("Authentication")
+    assert len(results) == 1
+    assert results[0]["title"] == "Authentication refactor"
+
+
+def test_search_finds_by_content(store):
+    store.save("Deploy notes", "updated the redis cache layer", "handoff")
+    results = store.search("redis")
+    assert len(results) == 1
+    assert "redis" in results[0]["content"]
+
+
+def test_search_with_type_filter(store):
+    store.save("Auth decision", "use JWT", "decision")
+    store.save("Auth handoff", "completed login", "handoff")
+    results = store.search("Auth", type="decision")
+    assert len(results) == 1
+    assert results[0]["type"] == "decision"
+
+
+def test_search_empty_when_no_match(store):
+    store.save("Something", "unrelated", "handoff")
+    results = store.search("xyzzy_no_match")
+    assert results == []
+
+
+def test_session_end_saves_observation(store):
+    store.session_end("Completed login feature")
+    results = store.context()
+    assert len(results) == 1
+    assert results[0]["type"] == "session_end"
+    assert "Completed login feature" in results[0]["content"]
