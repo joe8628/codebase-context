@@ -39,15 +39,7 @@ def run_server() -> None:
     from codebase_context.embedder import Embedder
     from codebase_context.retriever import Retriever
 
-    # Eagerly load embedding model at startup (so first tool call is fast)
     embedder = Embedder()
-    try:
-        embedder._get_model()
-        logger.info("Embedding model loaded at startup.")
-    except Exception as e:
-        logger.error("Failed to load embedding model: %s", e)
-        sys.exit(1)
-
     retriever = Retriever(project_root, embedder=embedder)
 
     from codebase_context.lsp.router import LspRouter

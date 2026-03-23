@@ -72,9 +72,17 @@ def init(ctx: click.Context) -> None:
         from codebase_context.watcher import install_git_hook
         install_git_hook(root)
 
+    _setup_external_deps()
+
     _setup_mcp_server(root)
 
-    _setup_lsp_binaries()
+    _setup_engram(root)
+
+
+@cli.command()
+def doctor() -> None:
+    """Check for required external binaries and offer to install missing ones."""
+    _setup_external_deps()
 
 
 @cli.command()
@@ -229,45 +237,93 @@ def serve(ctx: click.Context) -> None:
     run_server()
 
 
-_MCP_ENTRY = {"command": "ccindex", "args": ["serve"], "type": "stdio"}
+_MCP_ENTRY = {"command": "ccindex", "args": ["serve"]}
 _MCP_KEY = "codebase-context"
+_ENGRAM_KEY = "engram"
 
-_LSP_BINARIES = [
-    ("pyright-langserver",         "Python",        "npm install -g pyright"),
-    ("typescript-language-server", "TypeScript/JS",  "npm install -g typescript typescript-language-server"),
-    ("clangd",                     "C/C++",          None),  # system package — manual install
+# (binary, label, method, install_arg, fallback_url)
+# method: "brew" | "npm" | "manual"
+# install_arg: brew formula, npm package(s), or None
+# fallback_url: shown when auto-install is unavailable, or None
+_EXTERNAL_DEPS: list[tuple[str, str, str, str | None, str | None]] = [
+    (
+        "engram",
+        "Engram memory MCP",
+        "brew",
+        "gentleman-programming/tap/engram",
+        "https://github.com/Gentleman-Programming/engram/releases",
+    ),
+    (
+        "pyright-langserver",
+        "Python LSP",
+        "npm",
+        "pyright",
+        None,
+    ),
+    (
+        "typescript-language-server",
+        "TypeScript/JS LSP",
+        "npm",
+        "typescript typescript-language-server",
+        None,
+    ),
+    (
+        "clangd",
+        "C/C++ LSP",
+        "manual",
+        None,
+        None,
+    ),
 ]
 
 
-def _setup_lsp_binaries() -> None:
-    """Check for LSP binaries and offer to install the npm-based ones."""
-    missing = [
-        (binary, lang, cmd)
-        for binary, lang, cmd in _LSP_BINARIES
-        if not shutil.which(binary)
-    ]
+def _setup_external_deps() -> None:
+    """Check for required external binaries and offer to install missing ones."""
+    missing = [dep for dep in _EXTERNAL_DEPS if not shutil.which(dep[0])]
     if not missing:
         return
 
-    click.echo("\nLSP code navigation tools require these binaries:")
-    for binary, lang, install_cmd in missing:
-        hint = install_cmd if install_cmd else "sudo apt install clangd  OR  brew install llvm"
-        click.echo(f"  {binary} ({lang})  →  {hint}")
+    click.echo("\nSome dependencies are missing:")
+    has_brew = bool(shutil.which("brew"))
+    for binary, label, method, install_arg, fallback_url in missing:
+        if method == "brew":
+            hint = f"brew install {install_arg}" if has_brew else (fallback_url or f"install {binary} manually")
+        elif method == "npm":
+            hint = f"npm install -g {install_arg}"
+        else:
+            hint = "sudo apt install clangd  OR  brew install llvm"
+        click.echo(f"  {binary} ({label})  →  {hint}")
 
-    npm_installable = [(b, l, c) for b, l, c in missing if c]
-    if npm_installable and click.confirm("\nInstall npm-based LSP servers now?", default=True):
-        for binary, _lang, install_cmd in npm_installable:
+    brew_deps = [(b, a) for b, _l, m, a, _u in missing if m == "brew" and a]
+    if has_brew and brew_deps and click.confirm("\nInstall brew dependencies now?", default=True):
+        for binary, formula in brew_deps:
             click.echo(f"  Installing {binary}...")
             result = subprocess.run(
-                install_cmd.split(), capture_output=True, text=True
+                ["brew", "install", formula], capture_output=True, text=True
+            )
+            if result.returncode == 0:
+                click.echo(f"  ✓ {binary} installed")
+            else:
+                click.echo(f"  ✗ {binary} failed: {result.stderr.strip()}")
+    elif not has_brew:
+        for _b, _l, method, _a, fallback_url in missing:
+            if method == "brew" and fallback_url:
+                click.echo(f"\n  Download from: {fallback_url}")
+
+    npm_deps = [(b, a) for b, _l, m, a, _u in missing if m == "npm" and a]
+    if npm_deps and click.confirm("\nInstall npm-based LSP servers now?", default=True):
+        for binary, packages in npm_deps:
+            click.echo(f"  Installing {binary}...")
+            result = subprocess.run(
+                ["npm", "install", "-g", *packages.split()],
+                capture_output=True, text=True,
             )
             if result.returncode == 0:
                 click.echo(f"  ✓ {binary} installed")
             else:
                 click.echo(f"  ✗ {binary} failed: {result.stderr.strip()}")
 
-    clangd_missing = any(c is None for _, _, c in missing)
-    if clangd_missing:
+    if any(m == "manual" for _b, _l, m, _a, _u in missing):
         click.echo("\n  To install clangd manually:")
         click.echo("    Ubuntu/Debian:  sudo apt install clangd")
         click.echo("    macOS:          brew install llvm")
@@ -301,6 +357,42 @@ def _setup_mcp_server(project_root: str) -> None:
         click.echo("  Added MCP server to .claude/settings.json")
 
 
+def _setup_engram(project_root: str) -> None:
+    """Register engram memory MCP in .claude/settings.json if engram is on PATH."""
+    if not shutil.which("engram"):
+        return  # not installed — _setup_external_deps already offered installation
+
+    settings_path = Path(project_root) / ".claude" / "settings.json"
+
+    if settings_path.exists():
+        try:
+            data = json.loads(settings_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            data = {}
+        if _ENGRAM_KEY in data.get("mcpServers", {}):
+            click.echo("  engram already configured.")
+            return
+
+    if click.confirm("\nRegister engram memory MCP for this project?", default=True):
+        if settings_path.exists():
+            try:
+                data = json.loads(settings_path.read_text(encoding="utf-8"))
+            except json.JSONDecodeError:
+                data = {}
+        else:
+            settings_path.parent.mkdir(parents=True, exist_ok=True)
+            data = {}
+
+        engram_data_dir = str(Path(project_root) / ".claude")
+        data.setdefault("mcpServers", {})[_ENGRAM_KEY] = {
+            "command": "engram",
+            "args": ["mcp"],
+            "env": {"ENGRAM_DATA_DIR": engram_data_dir},
+        }
+        settings_path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+        click.echo("  Added engram MCP to .claude/settings.json")
+
+
 def _update_gitignore(project_root: str) -> None:
     """Appends codebase-context entries to .gitignore if not already present."""
     gitignore_path = Path(project_root) / ".gitignore"
@@ -312,6 +404,7 @@ def _update_gitignore(project_root: str) -> None:
         ".codebase-context/mcp.log",
         "# optionally commit repo_map.md for team visibility:",
         "# .codebase-context/repo_map.md",
+        ".claude/engram.db",
     ]
 
     if gitignore_path.exists():
