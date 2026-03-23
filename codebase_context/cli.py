@@ -76,7 +76,7 @@ def init(ctx: click.Context) -> None:
 
     _setup_mcp_server(root)
 
-    _setup_engram(root)
+    _setup_memgram(root)
 
 
 @cli.command()
@@ -237,22 +237,22 @@ def serve(ctx: click.Context) -> None:
     run_server()
 
 
-_MCP_ENTRY = {"command": "ccindex", "args": ["serve"]}
+@cli.command("mem-serve")
+def mem_serve() -> None:
+    """Start memgram memory MCP server (used by Claude Code)."""
+    from codebase_context.memgram.mcp_server import run_server
+    run_server()
+
+
+_MCP_ENTRY = {"command": "ccindex", "args": ["serve"], "type": "stdio"}
 _MCP_KEY = "codebase-context"
-_ENGRAM_KEY = "engram"
+_MEMGRAM_KEY = "memgram"
 
 # (binary, label, method, install_arg, fallback_url)
 # method: "brew" | "npm" | "manual"
 # install_arg: brew formula, npm package(s), or None
 # fallback_url: shown when auto-install is unavailable, or None
 _EXTERNAL_DEPS: list[tuple[str, str, str, str | None, str | None]] = [
-    (
-        "engram",
-        "Engram memory MCP",
-        "brew",
-        "gentleman-programming/tap/engram",
-        "https://github.com/Gentleman-Programming/engram/releases",
-    ),
     (
         "pyright-langserver",
         "Python LSP",
@@ -357,11 +357,8 @@ def _setup_mcp_server(project_root: str) -> None:
         click.echo("  Added MCP server to .claude/settings.json")
 
 
-def _setup_engram(project_root: str) -> None:
-    """Register engram memory MCP in .claude/settings.json if engram is on PATH."""
-    if not shutil.which("engram"):
-        return  # not installed — _setup_external_deps already offered installation
-
+def _setup_memgram(project_root: str) -> None:
+    """Register memgram memory MCP in .claude/settings.json."""
     settings_path = Path(project_root) / ".claude" / "settings.json"
 
     if settings_path.exists():
@@ -369,11 +366,11 @@ def _setup_engram(project_root: str) -> None:
             data = json.loads(settings_path.read_text(encoding="utf-8"))
         except json.JSONDecodeError:
             data = {}
-        if _ENGRAM_KEY in data.get("mcpServers", {}):
-            click.echo("  engram already configured.")
+        if _MEMGRAM_KEY in data.get("mcpServers", {}):
+            click.echo("  memgram already configured.")
             return
 
-    if click.confirm("\nRegister engram memory MCP for this project?", default=True):
+    if click.confirm("\nRegister memgram memory MCP for this project?", default=True):
         if settings_path.exists():
             try:
                 data = json.loads(settings_path.read_text(encoding="utf-8"))
@@ -383,14 +380,14 @@ def _setup_engram(project_root: str) -> None:
             settings_path.parent.mkdir(parents=True, exist_ok=True)
             data = {}
 
-        engram_data_dir = str(Path(project_root) / ".claude")
-        data.setdefault("mcpServers", {})[_ENGRAM_KEY] = {
-            "command": "engram",
-            "args": ["mcp"],
-            "env": {"ENGRAM_DATA_DIR": engram_data_dir},
+        memgram_data_dir = str(Path(project_root) / ".claude")
+        data.setdefault("mcpServers", {})[_MEMGRAM_KEY] = {
+            "command": "ccindex",
+            "args": ["mem-serve"],
+            "env": {"MEMGRAM_DATA_DIR": memgram_data_dir},
         }
         settings_path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
-        click.echo("  Added engram MCP to .claude/settings.json")
+        click.echo("  Added memgram MCP to .claude/settings.json")
 
 
 def _update_gitignore(project_root: str) -> None:
@@ -404,7 +401,7 @@ def _update_gitignore(project_root: str) -> None:
         ".codebase-context/mcp.log",
         "# optionally commit repo_map.md for team visibility:",
         "# .codebase-context/repo_map.md",
-        ".claude/engram.db",
+        ".claude/memgram.db",
     ]
 
     if gitignore_path.exists():

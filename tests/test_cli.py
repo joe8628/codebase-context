@@ -10,7 +10,7 @@ import click
 import pytest
 from click.testing import CliRunner
 
-from codebase_context.cli import cli, _setup_engram, _setup_external_deps
+from codebase_context.cli import cli, _setup_memgram, _setup_external_deps
 
 
 @click.command()
@@ -44,7 +44,7 @@ class TestSetupMcpServer:
         result = runner.invoke(
             cli,
             ["--root", str(tmp_project), "init"],
-            input="n\nn\ny\n",  # skip CLAUDE.md, skip git hook, accept MCP
+            input="n\nn\ny\nn\n",  # skip CLAUDE.md, skip git hook, accept MCP, decline memgram
             catch_exceptions=False,
         )
         settings = tmp_project / ".claude" / "settings.json"
@@ -64,7 +64,7 @@ class TestSetupMcpServer:
         runner.invoke(
             cli,
             ["--root", str(tmp_project), "init"],
-            input="n\nn\ny\n",
+            input="n\nn\ny\nn\n",
             catch_exceptions=False,
         )
         data = json.loads((claude_dir / "settings.json").read_text())
@@ -88,7 +88,7 @@ class TestSetupMcpServer:
         result = runner.invoke(
             cli,
             ["--root", str(tmp_project), "init"],
-            input="n\nn\n",  # only two prompts expected (CLAUDE.md + git hook)
+            input="n\nn\nn\n",  # CLAUDE.md=n, hook=n (MCP skips), memgram=n
             catch_exceptions=False,
         )
         # The MCP prompt should NOT appear
@@ -99,7 +99,7 @@ class TestSetupMcpServer:
         result = runner.invoke(
             cli,
             ["--root", str(tmp_project), "init"],
-            input="n\nn\ny\n",
+            input="n\nn\ny\nn\n",
             catch_exceptions=False,
         )
         assert "Added MCP server to .claude/settings.json" in result.output
@@ -109,7 +109,7 @@ class TestSetupMcpServer:
         result = runner.invoke(
             cli,
             ["--root", str(tmp_project), "init"],
-            input="n\nn\nn\n",  # decline all three prompts
+            input="n\nn\nn\nn\n",  # decline all four prompts
             catch_exceptions=False,
         )
         settings = tmp_project / ".claude" / "settings.json"
@@ -125,7 +125,7 @@ class TestSetupMcpServer:
         runner.invoke(
             cli,
             ["--root", str(tmp_project), "init"],
-            input="n\nn\ny\n",
+            input="n\nn\ny\nn\n",
             catch_exceptions=False,
         )
         data = json.loads((claude_dir / "settings.json").read_text())
@@ -137,88 +137,80 @@ class TestSetupMcpServer:
         result = runner.invoke(
             cli,
             ["--root", str(tmp_project), "init"],
-            input="n\nn\nn\n",
+            input="n\nn\nn\nn\n",
             catch_exceptions=False,
         )
         assert "mcp.json" not in result.output
 
 
 # ---------------------------------------------------------------------------
-# _setup_engram unit tests
+# _setup_memgram unit tests
 # ---------------------------------------------------------------------------
 
-class TestSetupEngram:
+class TestSetupMemgram:
     @pytest.fixture(autouse=True)
     def _no_ext_deps(self):
         with patch("codebase_context.cli._setup_external_deps"):
             yield
 
-    def test_skips_when_engram_not_on_path(self, tmp_project):
-        with patch("codebase_context.cli.shutil.which", return_value=None):
-            _setup_engram(str(tmp_project))
-        settings = tmp_project / ".claude" / "settings.json"
-        assert not settings.exists()
-
-    def test_registers_entry_when_accepted(self, tmp_project):
-        with patch("codebase_context.cli.shutil.which", return_value="/usr/local/bin/engram"):
-            runner = CliRunner()
-            runner.invoke(
-                cli,
-                ["--root", str(tmp_project), "init"],
-                input="n\nn\nn\ny\n",  # skip CLAUDE.md, git hook, MCP; accept engram
-                catch_exceptions=False,
-            )
-        settings = tmp_project / ".claude" / "settings.json"
-        assert settings.exists()
-        data = json.loads(settings.read_text())
-        assert "engram" in data["mcpServers"]
-        assert data["mcpServers"]["engram"]["command"] == "engram"
-        assert data["mcpServers"]["engram"]["args"] == ["mcp"]
-
-    def test_sets_engram_data_dir_to_claude_dir(self, tmp_project):
-        with patch("codebase_context.cli.shutil.which", return_value="/usr/local/bin/engram"):
-            runner = CliRunner()
-            runner.invoke(
-                cli,
-                ["--root", str(tmp_project), "init"],
-                input="n\nn\nn\ny\n",
-                catch_exceptions=False,
-            )
+    def test_registers_ccindex_mem_serve(self, tmp_project):
+        runner = CliRunner()
+        runner.invoke(
+            cli,
+            ["--root", str(tmp_project), "init"],
+            input="n\nn\nn\ny\n",  # CLAUDE.md=n, hook=n, MCP=n, memgram=y
+            catch_exceptions=False,
+        )
         settings = tmp_project / ".claude" / "settings.json"
         data = json.loads(settings.read_text())
-        expected = str(tmp_project / ".claude")
-        assert data["mcpServers"]["engram"]["env"]["ENGRAM_DATA_DIR"] == expected
+        entry = data["mcpServers"]["memgram"]
+        assert entry["command"] == "ccindex"
+        assert entry["args"] == ["mem-serve"]
+
+    def test_sets_memgram_data_dir_to_claude_dir(self, tmp_project):
+        runner = CliRunner()
+        runner.invoke(
+            cli,
+            ["--root", str(tmp_project), "init"],
+            input="n\nn\nn\ny\n",
+            catch_exceptions=False,
+        )
+        settings = tmp_project / ".claude" / "settings.json"
+        data = json.loads(settings.read_text())
+        env = data["mcpServers"]["memgram"]["env"]
+        assert env["MEMGRAM_DATA_DIR"] == str(tmp_project / ".claude")
 
     def test_skips_if_entry_already_present(self, tmp_project):
+        # Pre-populate memgram — _setup_memgram must return early without prompting.
+        # init flow: CLAUDE.md=n, hook=n, MCP=n  (memgram auto-skips, no prompt)
         claude_dir = tmp_project / ".claude"
         claude_dir.mkdir()
-        existing = {"mcpServers": {"engram": {"command": "engram", "args": ["mcp"]}}}
+        existing = {"mcpServers": {"memgram": {"command": "ccindex", "args": ["mem-serve"]}}}
         (claude_dir / "settings.json").write_text(json.dumps(existing))
 
-        with patch("codebase_context.cli.shutil.which", return_value="/usr/local/bin/engram"):
-            runner = CliRunner()
-            result = runner.invoke(
-                cli,
-                ["--root", str(tmp_project), "init"],
-                input="n\nn\nn\n",
-                catch_exceptions=False,
-            )
-        assert "Register engram" not in result.output
+        runner = CliRunner()
+        result = runner.invoke(
+            cli,
+            ["--root", str(tmp_project), "init"],
+            input="n\nn\nn\n",  # CLAUDE.md=n, hook=n, MCP=n (memgram skips)
+            catch_exceptions=False,
+        )
+        assert "Register memgram" not in result.output
+        data = json.loads((claude_dir / "settings.json").read_text())
+        assert data["mcpServers"]["memgram"]["command"] == "ccindex"
 
     def test_skips_when_user_declines(self, tmp_project):
-        with patch("codebase_context.cli.shutil.which", return_value="/usr/local/bin/engram"):
-            runner = CliRunner()
-            runner.invoke(
-                cli,
-                ["--root", str(tmp_project), "init"],
-                input="n\nn\nn\nn\n",  # decline all prompts including engram
-                catch_exceptions=False,
-            )
+        runner = CliRunner()
+        runner.invoke(
+            cli,
+            ["--root", str(tmp_project), "init"],
+            input="n\nn\nn\nn\n",  # CLAUDE.md=n, hook=n, MCP=n, memgram=n
+            catch_exceptions=False,
+        )
         settings = tmp_project / ".claude" / "settings.json"
-        # settings.json may not exist, or if it does, engram should not be in it
         if settings.exists():
             data = json.loads(settings.read_text())
-            assert "engram" not in data.get("mcpServers", {})
+            assert "memgram" not in data.get("mcpServers", {})
 
 
 # ---------------------------------------------------------------------------
@@ -237,41 +229,6 @@ class TestSetupExternalDeps:
         with patch("codebase_context.cli.shutil.which", return_value="/usr/bin/x"):
             result = runner.invoke(_deps_cmd, catch_exceptions=False)
         assert result.output == ""
-
-    def test_shows_engram_brew_hint_when_brew_available(self, tmp_project):
-        runner = CliRunner()
-        with patch("codebase_context.cli.shutil.which", side_effect=self._which_except("engram")):
-            result = runner.invoke(_deps_cmd, input="n\n", catch_exceptions=False)
-        assert "gentleman-programming/tap/engram" in result.output
-
-    def test_shows_engram_fallback_url_when_no_brew(self, tmp_project):
-        runner = CliRunner()
-        def no_brew_no_engram(binary):
-            return None if binary in ("engram", "brew") else f"/usr/bin/{binary}"
-        with patch("codebase_context.cli.shutil.which", side_effect=no_brew_no_engram):
-            result = runner.invoke(_deps_cmd, catch_exceptions=False)
-        assert "github.com/Gentleman-Programming/engram/releases" in result.output
-
-    def test_installs_engram_via_brew_on_accept(self, tmp_project):
-        def which_side(binary):
-            return None if binary == "engram" else f"/usr/bin/{binary}"
-        with patch("codebase_context.cli.shutil.which", side_effect=which_side), \
-             patch("codebase_context.cli.subprocess.run") as mock_run:
-            mock_run.return_value.returncode = 0
-            runner = CliRunner()
-            runner.invoke(_deps_cmd, input="y\nn\n", catch_exceptions=False)
-        brew_calls = [c for c in mock_run.call_args_list if "brew" in c.args[0]]
-        assert any("gentleman-programming/tap/engram" in str(c) for c in brew_calls)
-
-    def test_skips_brew_install_on_decline(self, tmp_project):
-        def which_side(binary):
-            return None if binary == "engram" else f"/usr/bin/{binary}"
-        with patch("codebase_context.cli.shutil.which", side_effect=which_side), \
-             patch("codebase_context.cli.subprocess.run") as mock_run:
-            runner = CliRunner()
-            runner.invoke(_deps_cmd, input="n\nn\n", catch_exceptions=False)
-        brew_calls = [c for c in mock_run.call_args_list if c.args and "brew" in c.args[0]]
-        assert not brew_calls
 
     def test_installs_npm_lsp_on_accept(self, tmp_project):
         def which_side(binary):
