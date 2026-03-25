@@ -6,6 +6,7 @@ import os
 # Global defaults (override via environment variables)
 EMBED_MODEL      = os.environ.get("CC_EMBED_MODEL", "jinaai/jina-embeddings-v2-base-code")
 EMBED_BATCH_SIZE = int(os.environ.get("CC_EMBED_BATCH_SIZE", "32"))
+CC_MODELS_DIR    = os.environ.get("CC_MODELS_DIR", "")
 CHROMA_DIR       = os.environ.get("CC_CHROMA_DIR", ".codebase-context/chroma")
 REPO_MAP_PATH    = os.environ.get("CC_REPO_MAP_PATH", ".codebase-context/repo_map.md")
 INDEX_META_PATH  = os.environ.get("CC_INDEX_META_PATH", ".codebase-context/index_meta.json")
