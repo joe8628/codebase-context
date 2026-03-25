@@ -9,6 +9,7 @@ build/
 .pytest_cache/
 .coverage
 htmlcov/
+models/
 
 # codebase-context generated files
 .codebase-context/chroma/
