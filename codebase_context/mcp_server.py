@@ -42,6 +42,9 @@ def run_server() -> None:
     embedder = Embedder()
     retriever = Retriever(project_root, embedder=embedder)
 
+    from codebase_context.memory_store import MemoryStore
+    memory_store = MemoryStore(project_root)
+
     from codebase_context.lsp.router import LspRouter
     import atexit
     router = LspRouter(project_root)
@@ -202,6 +205,41 @@ def run_server() -> None:
                     "required": ["file"],
                 },
             ),
+            types.Tool(
+                name="store_memory",
+                description=(
+                    "Log an agent event to the session memory store. "
+                    "Call this after decisions, discoveries, bugfixes, or task handoffs "
+                    "to persist context for other agents and future sessions."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "agent":      {"type": "string", "description": "Agent name (e.g. planner, dev-agent)"},
+                        "event_type": {"type": "string", "description": "Event type (e.g. decision, handoff, bugfix)"},
+                        "content":    {"type": "string", "description": "Event content — freeform text"},
+                        "task_id":    {"type": "string", "description": "Optional task ID to associate this event with"},
+                    },
+                    "required": ["agent", "event_type", "content"],
+                },
+            ),
+            types.Tool(
+                name="recall_memory",
+                description=(
+                    "Full-text search over session memory. "
+                    "Use this to retrieve past decisions, discoveries, or handoffs relevant to the current task."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "query":      {"type": "string",  "description": "Full-text search query"},
+                        "limit":      {"type": "integer", "description": "Max results. Default: 10.", "default": 10},
+                        "agent":      {"type": "string",  "description": "Filter by agent name"},
+                        "event_type": {"type": "string",  "description": "Filter by event type"},
+                    },
+                    "required": ["query"],
+                },
+            ),
         ]
 
     @server.call_tool()
@@ -220,6 +258,10 @@ def run_server() -> None:
             elif name in ("find_definition", "find_references", "get_signature",
                           "get_call_hierarchy", "warm_file"):
                 return await _handle_lsp_tool(name, router, arguments, project_root)
+            elif name == "store_memory":
+                return await _handle_store_memory(memory_store, arguments)
+            elif name == "recall_memory":
+                return await _handle_recall_memory(memory_store, arguments)
             else:
                 return [types.TextContent(
                     type="text",
@@ -316,6 +358,30 @@ async def _handle_get_repo_map(retriever, project_root: str):
     from mcp import types
     content = retriever.get_repo_map(project_root)
     return [types.TextContent(type="text", text=content)]
+
+
+async def _handle_store_memory(memory_store, arguments: dict):
+    from mcp import types
+
+    event_id = memory_store.store_event(
+        agent=arguments["agent"],
+        event_type=arguments["event_type"],
+        content=arguments["content"],
+        task_id=arguments.get("task_id"),
+    )
+    return [types.TextContent(type="text", text=json.dumps({"id": event_id}))]
+
+
+async def _handle_recall_memory(memory_store, arguments: dict):
+    from mcp import types
+
+    results = memory_store.search_events(
+        query=arguments["query"],
+        limit=int(arguments.get("limit", 10)),
+        agent=arguments.get("agent"),
+        event_type=arguments.get("event_type"),
+    )
+    return [types.TextContent(type="text", text=json.dumps(results, indent=2))]
 
 
 async def _handle_lsp_tool(
