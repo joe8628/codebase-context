@@ -46,3 +46,33 @@ async def test_handle_recall_memory_returns_events(tmp_path):
     assert isinstance(events, list)
     assert len(events) == 1
     assert "JWT" in events[0]["content"]
+
+
+async def test_handle_record_change_manifest_returns_count(tmp_path):
+    from codebase_context.memory_store import MemoryStore
+    store = MemoryStore(str(tmp_path))
+    changes = [
+        {"filepath": "auth.py", "change_type": "modified"},
+        {"filepath": "utils.py", "change_type": "added"},
+    ]
+    result = await mcp_server_mod._handle_record_change_manifest(
+        store,
+        {"task_id": "task-1", "changes": changes},
+    )
+    assert len(result) == 1
+    payload = json.loads(result[0].text)
+    assert payload["count"] == 2
+
+
+async def test_handle_get_change_manifest_returns_records(tmp_path):
+    from codebase_context.memory_store import MemoryStore
+    store = MemoryStore(str(tmp_path))
+    store.record_manifest("task-2", [{"filepath": "auth.py", "change_type": "modified"}])
+    result = await mcp_server_mod._handle_get_change_manifest(
+        store,
+        {"task_id": "task-2"},
+    )
+    assert len(result) == 1
+    records = json.loads(result[0].text)
+    assert isinstance(records, list)
+    assert records[0]["filepath"] == "auth.py"

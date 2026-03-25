@@ -240,6 +240,49 @@ def run_server() -> None:
                     "required": ["query"],
                 },
             ),
+            types.Tool(
+                name="record_change_manifest",
+                description=(
+                    "Record the files and symbols a Dev Agent touched at task.done. "
+                    "Call this at the end of each task with the full list of changes."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "task_id": {"type": "string", "description": "Task ID"},
+                        "changes": {
+                            "type": "array",
+                            "description": "List of change records",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "filepath":      {"type": "string"},
+                                    "change_type":   {"type": "string", "enum": ["added", "modified", "deleted"]},
+                                    "symbol_name":   {"type": "string"},
+                                    "old_signature": {"type": "string"},
+                                    "new_signature": {"type": "string"},
+                                },
+                                "required": ["filepath", "change_type"],
+                            },
+                        },
+                    },
+                    "required": ["task_id", "changes"],
+                },
+            ),
+            types.Tool(
+                name="get_change_manifest",
+                description=(
+                    "Retrieve the change manifest for a task. "
+                    "Use this as a Review Agent to see which files and symbols were modified."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "task_id": {"type": "string", "description": "Task ID to retrieve manifest for"},
+                    },
+                    "required": ["task_id"],
+                },
+            ),
         ]
 
     @server.call_tool()
@@ -262,6 +305,10 @@ def run_server() -> None:
                 return await _handle_store_memory(memory_store, arguments)
             elif name == "recall_memory":
                 return await _handle_recall_memory(memory_store, arguments)
+            elif name == "record_change_manifest":
+                return await _handle_record_change_manifest(memory_store, arguments)
+            elif name == "get_change_manifest":
+                return await _handle_get_change_manifest(memory_store, arguments)
             else:
                 return [types.TextContent(
                     type="text",
@@ -382,6 +429,23 @@ async def _handle_recall_memory(memory_store, arguments: dict):
         event_type=arguments.get("event_type"),
     )
     return [types.TextContent(type="text", text=json.dumps(results, indent=2))]
+
+
+async def _handle_record_change_manifest(memory_store, arguments: dict):
+    from mcp import types
+
+    count = memory_store.record_manifest(
+        task_id=arguments["task_id"],
+        changes=arguments["changes"],
+    )
+    return [types.TextContent(type="text", text=json.dumps({"count": count}))]
+
+
+async def _handle_get_change_manifest(memory_store, arguments: dict):
+    from mcp import types
+
+    records = memory_store.get_manifest(task_id=arguments["task_id"])
+    return [types.TextContent(type="text", text=json.dumps(records, indent=2))]
 
 
 async def _handle_lsp_tool(
