@@ -1,6 +1,7 @@
 """SQLite-backed memory store for agent session events, tasks, and change manifests."""
 from __future__ import annotations
 
+import json
 import time
 
 from codebase_context.db import get_connection
@@ -102,6 +103,65 @@ class MemoryStore:
                 "content": row["content"],
                 "task_id": row["task_id"],
                 "created_at": row["created_at"],
+            }
+            for row in rows
+        ]
+
+    # --- Tasks ---
+
+    def create_task(self, task_id: str, agent: str, payload: dict) -> None:
+        """Create a new task with status 'pending'."""
+        now = int(time.time())
+        self._conn.execute(
+            "INSERT INTO tasks(id, status, agent, payload, created_at, updated_at) VALUES (?,?,?,?,?,?)",
+            (task_id, "pending", agent, json.dumps(payload), now, now),
+        )
+        self._conn.commit()
+
+    def update_task_status(self, task_id: str, status: str) -> None:
+        """Update the status of an existing task."""
+        self._conn.execute(
+            "UPDATE tasks SET status=?, updated_at=? WHERE id=?",
+            (status, int(time.time()), task_id),
+        )
+        self._conn.commit()
+
+    def get_task(self, task_id: str) -> dict | None:
+        """Fetch a single task by ID. Returns None if not found."""
+        row = self._conn.execute(
+            "SELECT id, status, agent, payload, created_at, updated_at FROM tasks WHERE id=?",
+            (task_id,),
+        ).fetchone()
+        if row is None:
+            return None
+        return {
+            "id": row["id"],
+            "status": row["status"],
+            "agent": row["agent"],
+            "payload": json.loads(row["payload"]) if row["payload"] else {},
+            "created_at": row["created_at"],
+            "updated_at": row["updated_at"],
+        }
+
+    def list_tasks(self, status: str | None = None) -> list[dict]:
+        """List all tasks, optionally filtered by status."""
+        if status:
+            rows = self._conn.execute(
+                "SELECT id, status, agent, payload, created_at, updated_at FROM tasks WHERE status=?",
+                (status,),
+            ).fetchall()
+        else:
+            rows = self._conn.execute(
+                "SELECT id, status, agent, payload, created_at, updated_at FROM tasks"
+            ).fetchall()
+        return [
+            {
+                "id": row["id"],
+                "status": row["status"],
+                "agent": row["agent"],
+                "payload": json.loads(row["payload"]) if row["payload"] else {},
+                "created_at": row["created_at"],
+                "updated_at": row["updated_at"],
             }
             for row in rows
         ]
