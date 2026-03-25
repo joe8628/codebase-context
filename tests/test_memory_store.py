@@ -127,3 +127,56 @@ def test_task_has_required_fields(store):
     assert "payload" in task
     assert "created_at" in task
     assert "updated_at" in task
+
+
+# --- Change manifests ---
+
+def test_record_manifest_returns_count(store):
+    changes = [
+        {"filepath": "auth.py", "change_type": "modified", "symbol_name": "login"},
+        {"filepath": "utils.py", "change_type": "added", "symbol_name": "hash_password"},
+    ]
+    count = store.record_manifest("task-cm-1", changes)
+    assert count == 2
+
+
+def test_get_manifest_returns_records(store):
+    changes = [
+        {
+            "filepath": "auth.py",
+            "change_type": "modified",
+            "symbol_name": "login",
+            "old_signature": "def login(email)",
+            "new_signature": "def login(email, mfa)",
+        },
+    ]
+    store.record_manifest("task-cm-2", changes)
+    records = store.get_manifest("task-cm-2")
+    assert len(records) == 1
+    assert records[0]["filepath"] == "auth.py"
+    assert records[0]["change_type"] == "modified"
+    assert records[0]["symbol_name"] == "login"
+    assert records[0]["old_signature"] == "def login(email)"
+    assert records[0]["new_signature"] == "def login(email, mfa)"
+
+
+def test_get_manifest_empty_for_unknown_task(store):
+    assert store.get_manifest("nonexistent-task") == []
+
+
+def test_get_manifest_scoped_to_task(store):
+    store.record_manifest("task-a", [{"filepath": "a.py", "change_type": "added"}])
+    store.record_manifest("task-b", [{"filepath": "b.py", "change_type": "modified"}])
+    records = store.get_manifest("task-a")
+    assert len(records) == 1
+    assert records[0]["filepath"] == "a.py"
+
+
+def test_manifest_record_has_required_fields(store):
+    store.record_manifest("task-fields", [{"filepath": "model.py", "change_type": "deleted"}])
+    record = store.get_manifest("task-fields")[0]
+    assert "filepath" in record
+    assert "symbol_name" in record
+    assert "change_type" in record
+    assert "old_signature" in record
+    assert "new_signature" in record

@@ -165,3 +165,44 @@ class MemoryStore:
             }
             for row in rows
         ]
+
+    # --- Change manifests ---
+
+    def record_manifest(self, task_id: str, changes: list[dict]) -> int:
+        """Insert change records for a task. Returns the number of records inserted."""
+        self._conn.executemany(
+            "INSERT INTO change_manifests"
+            "(task_id, filepath, symbol_name, change_type, old_signature, new_signature)"
+            " VALUES (?,?,?,?,?,?)",
+            [
+                (
+                    task_id,
+                    c["filepath"],
+                    c.get("symbol_name"),
+                    c["change_type"],
+                    c.get("old_signature"),
+                    c.get("new_signature"),
+                )
+                for c in changes
+            ],
+        )
+        self._conn.commit()
+        return len(changes)
+
+    def get_manifest(self, task_id: str) -> list[dict]:
+        """Fetch all change records for a task."""
+        rows = self._conn.execute(
+            "SELECT filepath, symbol_name, change_type, old_signature, new_signature "
+            "FROM change_manifests WHERE task_id=?",
+            (task_id,),
+        ).fetchall()
+        return [
+            {
+                "filepath": row["filepath"],
+                "symbol_name": row["symbol_name"],
+                "change_type": row["change_type"],
+                "old_signature": row["old_signature"],
+                "new_signature": row["new_signature"],
+            }
+            for row in rows
+        ]
