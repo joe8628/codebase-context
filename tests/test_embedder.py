@@ -1,4 +1,4 @@
-"""Tests for Embedder._seed_from_local (airgapped model seeding)."""
+"""Tests for Embedder._seed_local_to_hf_cache (airgapped model seeding)."""
 
 from __future__ import annotations
 
@@ -18,57 +18,56 @@ def _make_local_model(base: Path, folder_name: str) -> Path:
     return model_dir
 
 
-def _no_such_file_error(snapshot_dir: Path) -> str:
-    """Build the onnxruntime NoSuchFile message format fastembed emits."""
-    onnx = snapshot_dir / "onnx" / "model.onnx"
-    return f"[ONNXRuntimeError] : 3 : NO_SUCHFILE : Load model from {onnx} failed: File doesn't exist"
-
-
 # ---------------------------------------------------------------------------
-# _seed_from_local
+# _seed_local_to_hf_cache
 # ---------------------------------------------------------------------------
 
-def test_copies_model_to_snapshot_path(tmp_path):
+def test_creates_hf_cache_structure(tmp_path):
     local_models = tmp_path / "models"
     _make_local_model(local_models, "jina-embeddings-v2-base-code")
 
-    snapshot_dir = (
-        tmp_path / "cache"
-        / "models--jinaai--jina-embeddings-v2-base-code"
-        / "snapshots" / "abc123deadbeef"
-    )
-    error_msg = _no_such_file_error(snapshot_dir)
+    cache_dir = tmp_path / "cache"
+    cache_dir.mkdir()
 
     embedder = Embedder()
-    result = embedder._seed_from_local(error_msg, str(local_models))
+    result = embedder._seed_local_to_hf_cache(str(cache_dir), str(local_models))
 
     assert result is True
-    assert (snapshot_dir / "config.json").exists()
-    assert (snapshot_dir / "onnx" / "model.onnx").exists()
+    model_dir = cache_dir / "models--jinaai--jina-embeddings-v2-base-code"
+    assert (model_dir / "refs" / "main").read_text() == "local"
+    assert (model_dir / "snapshots" / "local" / "config.json").exists()
+    assert (model_dir / "snapshots" / "local" / "onnx" / "model.onnx").exists()
 
 
-def test_returns_false_when_error_message_has_no_path(tmp_path):
+def test_no_op_when_refs_main_already_exists(tmp_path):
     local_models = tmp_path / "models"
     _make_local_model(local_models, "jina-embeddings-v2-base-code")
 
-    embedder = Embedder()
-    result = embedder._seed_from_local("some unrelated error", str(local_models))
+    cache_dir = tmp_path / "cache"
+    model_dir = cache_dir / "models--jinaai--jina-embeddings-v2-base-code"
+    refs_main = model_dir / "refs" / "main"
+    refs_main.parent.mkdir(parents=True)
+    refs_main.write_text("some-real-hash")
 
-    assert result is False
+    embedder = Embedder()
+    result = embedder._seed_local_to_hf_cache(str(cache_dir), str(local_models))
+
+    assert result is True
+    assert refs_main.read_text() == "some-real-hash"  # not overwritten
 
 
 def test_returns_false_when_local_model_folder_missing(tmp_path):
     local_models = tmp_path / "models"
     local_models.mkdir()  # exists but empty
 
-    snapshot_dir = tmp_path / "cache" / "snapshots" / "abc"
-    error_msg = _no_such_file_error(snapshot_dir)
+    cache_dir = tmp_path / "cache"
+    cache_dir.mkdir()
 
     embedder = Embedder()
-    result = embedder._seed_from_local(error_msg, str(local_models))
+    result = embedder._seed_local_to_hf_cache(str(cache_dir), str(local_models))
 
     assert result is False
-    assert not snapshot_dir.exists()
+    assert not (cache_dir / "models--jinaai--jina-embeddings-v2-base-code").exists()
 
 
 def test_accepts_full_slug_folder_name(tmp_path):
@@ -76,25 +75,27 @@ def test_accepts_full_slug_folder_name(tmp_path):
     local_models = tmp_path / "models"
     _make_local_model(local_models, "jinaai-jina-embeddings-v2-base-code")
 
-    snapshot_dir = tmp_path / "cache" / "snapshots" / "abc"
-    error_msg = _no_such_file_error(snapshot_dir)
+    cache_dir = tmp_path / "cache"
+    cache_dir.mkdir()
 
     embedder = Embedder()
-    result = embedder._seed_from_local(error_msg, str(local_models))
+    result = embedder._seed_local_to_hf_cache(str(cache_dir), str(local_models))
 
     assert result is True
-    assert (snapshot_dir / "config.json").exists()
+    model_dir = cache_dir / "models--jinaai--jina-embeddings-v2-base-code"
+    assert (model_dir / "snapshots" / "local" / "config.json").exists()
 
 
-def test_creates_intermediate_snapshot_dirs(tmp_path):
-    """snapshot_dir parent (snapshots/) may not exist yet."""
+def test_idempotent_on_repeated_calls(tmp_path):
+    """Calling twice does not raise even if snapshot dir already exists."""
     local_models = tmp_path / "models"
     _make_local_model(local_models, "jina-embeddings-v2-base-code")
 
-    deep_snapshot = tmp_path / "a" / "b" / "c" / "snapshots" / "hash1"
-    error_msg = _no_such_file_error(deep_snapshot)
+    cache_dir = tmp_path / "cache"
+    cache_dir.mkdir()
 
     embedder = Embedder()
-    embedder._seed_from_local(error_msg, str(local_models))
-
-    assert (deep_snapshot / "config.json").exists()
+    embedder._seed_local_to_hf_cache(str(cache_dir), str(local_models))
+    # Second call must not raise (refs/main already exists → early return)
+    result = embedder._seed_local_to_hf_cache(str(cache_dir), str(local_models))
+    assert result is True

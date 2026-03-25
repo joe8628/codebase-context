@@ -33,10 +33,9 @@ class Embedder:
     Airgapped / offline use: set CC_MODELS_DIR to a directory containing the
     model folder (e.g. ``CC_MODELS_DIR=/workspace/models``).  The subfolder
     name should be the model basename (``jina-embeddings-v2-base-code``) or
-    the full slug (``jinaai-jina-embeddings-v2-base-code``).  On the first
-    call, HF_HUB_OFFLINE is set so fastembed skips the download and fails fast
-    with a NoSuchFile error containing the exact snapshot path needed; the
-    local files are then copied there and the load is retried.
+    the full slug (``jinaai-jina-embeddings-v2-base-code``).  The files are
+    copied into the HF hub cache structure before fastembed is initialised;
+    HF_HUB_OFFLINE=1 is then set so no download is attempted.
     """
 
     def __init__(self, model_name: str = EMBED_MODEL):
@@ -44,25 +43,33 @@ class Embedder:
         self._model: TextEmbedding | None = None
         self._lock = threading.Lock()
 
-    def _seed_from_local(self, error_message: str, models_dir: str) -> bool:
-        """Copy local model to the snapshot path extracted from *error_message*.
+    def _seed_local_to_hf_cache(self, cache_dir: str, models_dir: str) -> bool:
+        """Proactively copy local model files into the HF hub cache structure.
 
-        fastembed raises an onnxruntime NoSuchFile whose message contains::
+        Creates::
 
-            Load model from /full/path/to/onnx/model.onnx failed
+            {cache_dir}/models--{org}--{model}/
+                refs/main          ← contains "local"
+                snapshots/local/   ← copy of the local model folder
 
-        The snapshot directory is two levels above that path (``onnx/model.onnx``).
-        Local folder name accepted: model basename or full org-model slug.
-        Returns True when files were copied successfully, False otherwise.
+        huggingface_hub (with ``HF_HUB_OFFLINE=1``) reads ``refs/main`` to
+        resolve the snapshot path; finding the files there, fastembed loads
+        the model without any network access.
+
+        Is a no-op if ``refs/main`` already exists (model already seeded or
+        previously downloaded).  Accepts a local folder named either after the
+        model basename (``jina-embeddings-v2-base-code``) or the full slug
+        (``jinaai-jina-embeddings-v2-base-code``).
+
+        Returns True when the cache is ready, False when the local folder is
+        not found.
         """
-        import re
+        # HF hub cache dir name: models--{org}--{model}  (/ → --)
+        model_dir = Path(cache_dir) / ("models--" + self.model_name.replace("/", "--"))
+        refs_main = model_dir / "refs" / "main"
 
-        match = re.search(r"Load model from ([^ ]+) failed", error_message)
-        if not match:
-            return False
-
-        onnx_path = Path(match.group(1))
-        snapshot_dir = onnx_path.parent.parent  # strip onnx/model.onnx
+        if refs_main.exists():
+            return True  # Already seeded or downloaded — nothing to do
 
         model_basename = self.model_name.split("/")[-1]
         local_path = Path(models_dir) / model_basename
@@ -76,10 +83,15 @@ class Embedder:
             )
             return False
 
-        logger.info("Copying local model from %s to %s ...", local_path, snapshot_dir)
-        snapshot_dir.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copytree(str(local_path), str(snapshot_dir))
-        logger.info("Local model seeded to fastembed cache.")
+        revision = "local"
+        snapshot_dir = model_dir / "snapshots" / revision
+
+        logger.info("Seeding fastembed cache from local model at %s ...", local_path)
+        snapshot_dir.mkdir(parents=True, exist_ok=True)
+        shutil.copytree(str(local_path), str(snapshot_dir), dirs_exist_ok=True)
+        refs_main.parent.mkdir(parents=True, exist_ok=True)
+        refs_main.write_text(revision)
+        logger.info("Local model seeded to fastembed cache at %s.", snapshot_dir)
         return True
 
     def _get_model(self) -> "TextEmbedding":
@@ -95,20 +107,11 @@ class Embedder:
                     cache_dir = os.path.expanduser("~/.cache/fastembed")
                     models_dir = os.environ.get("CC_MODELS_DIR", "")
 
-                    if models_dir:
-                        # Skip the slow download attempt; fastembed will fail
-                        # fast with NoSuchFile so we can seed from CC_MODELS_DIR.
+                    if models_dir and self._seed_local_to_hf_cache(cache_dir, models_dir):
+                        # Cache is ready; prevent any download attempt.
                         os.environ.setdefault("HF_HUB_OFFLINE", "1")
 
-                    try:
-                        self._model = TextEmbedding(self.model_name, cache_dir=cache_dir)
-                    except Exception as exc:
-                        if models_dir and self._seed_from_local(str(exc), models_dir):
-                            logger.info("Retrying after seeding local model...")
-                            self._model = TextEmbedding(self.model_name, cache_dir=cache_dir)
-                        else:
-                            raise
-
+                    self._model = TextEmbedding(self.model_name, cache_dir=cache_dir)
                     logger.info("Embedding model loaded.")
         return self._model
 

@@ -3,9 +3,9 @@
 #
 # Wrapper for `ccindex init` that works in airgapped / Docker environments.
 #
-# Sets CC_MODELS_DIR and HF_HUB_OFFLINE so the Python embedder skips the
-# network download, fails fast with a NoSuchFile error, reads the expected
-# snapshot path from that error, copies from CC_MODELS_DIR, and retries.
+# Sets CC_MODELS_DIR so the Python embedder proactively copies the local model
+# into the HF hub cache structure and sets HF_HUB_OFFLINE=1 itself — no
+# download is attempted and all interactive prompts are visible.
 #
 # Local model files are expected at:
 #   <repo-root>/models/jina-embeddings-v2-base-code/
@@ -27,8 +27,6 @@ fi
 
 if [[ -n "${CC_MODELS_DIR:-}" ]]; then
     export CC_MODELS_DIR
-    # Skip the slow HF download; embedder seeds from CC_MODELS_DIR on NoSuchFile
-    export HF_HUB_OFFLINE="${HF_HUB_OFFLINE:-1}"
     echo ">>> Offline mode: CC_MODELS_DIR=$CC_MODELS_DIR"
 else
     echo "WARNING: models/ not found and CC_MODELS_DIR is not set — will attempt download."
