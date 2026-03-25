@@ -39,21 +39,49 @@ def test_creates_hf_cache_structure(tmp_path):
     assert (model_dir / "snapshots" / "local" / "onnx" / "model.onnx").exists()
 
 
-def test_no_op_when_refs_main_already_exists(tmp_path):
+def test_no_op_when_snapshot_already_complete(tmp_path):
+    """When refs/main points to a snapshot that has the onnx file, skip seeding."""
     local_models = tmp_path / "models"
     _make_local_model(local_models, "jina-embeddings-v2-base-code")
 
     cache_dir = tmp_path / "cache"
     model_dir = cache_dir / "models--jinaai--jina-embeddings-v2-base-code"
+    existing_hash = "516f4baf13dec4ddddda8631e019b5737c8bc250"
+    snapshot = model_dir / "snapshots" / existing_hash
+    (snapshot / "onnx").mkdir(parents=True)
+    (snapshot / "onnx" / "model.onnx").write_bytes(b"real-onnx")
     refs_main = model_dir / "refs" / "main"
     refs_main.parent.mkdir(parents=True)
-    refs_main.write_text("some-real-hash")
+    refs_main.write_text(existing_hash)
 
     embedder = Embedder()
     result = embedder._seed_local_to_hf_cache(str(cache_dir), str(local_models))
 
     assert result is True
-    assert refs_main.read_text() == "some-real-hash"  # not overwritten
+    assert refs_main.read_text() == existing_hash  # not overwritten
+
+
+def test_reseeds_when_snapshot_is_incomplete(tmp_path):
+    """refs/main exists but onnx file is missing (partial download) — should seed."""
+    local_models = tmp_path / "models"
+    _make_local_model(local_models, "jina-embeddings-v2-base-code")
+
+    cache_dir = tmp_path / "cache"
+    model_dir = cache_dir / "models--jinaai--jina-embeddings-v2-base-code"
+    stale_hash = "516f4baf13dec4ddddda8631e019b5737c8bc250"
+    # Snapshot dir exists but no onnx file (partial download)
+    (model_dir / "snapshots" / stale_hash).mkdir(parents=True)
+    refs_main = model_dir / "refs" / "main"
+    refs_main.parent.mkdir(parents=True)
+    refs_main.write_text(stale_hash)
+
+    embedder = Embedder()
+    result = embedder._seed_local_to_hf_cache(str(cache_dir), str(local_models))
+
+    assert result is True
+    # refs/main now points to "local" and the onnx file is present
+    assert refs_main.read_text() == "local"
+    assert (model_dir / "snapshots" / "local" / "onnx" / "model.onnx").exists()
 
 
 def test_returns_false_when_local_model_folder_missing(tmp_path):

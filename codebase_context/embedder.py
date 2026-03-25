@@ -69,7 +69,12 @@ class Embedder:
         refs_main = model_dir / "refs" / "main"
 
         if refs_main.exists():
-            return True  # Already seeded or downloaded — nothing to do
+            # Verify the snapshot the ref points to is actually complete.
+            # A partial download leaves refs/main in place but no onnx file.
+            current_hash = refs_main.read_text().strip()
+            onnx_file = model_dir / "snapshots" / current_hash / "onnx" / "model.onnx"
+            if onnx_file.exists():
+                return True  # Fully cached — nothing to do
 
         model_basename = self.model_name.split("/")[-1]
         local_path = Path(models_dir) / model_basename
