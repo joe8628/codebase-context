@@ -24,22 +24,23 @@ class UnsupportedLanguageError(ValueError):
 
 @dataclass
 class Symbol:
-    name:        str
-    symbol_type: str        # "function" | "class" | "method" | "interface" | "type"
-    start_line:  int        # 0-indexed
-    end_line:    int        # 0-indexed, inclusive
-    source:      str        # full source text of this symbol
-    signature:   str        # compact one-line signature for repo map
-    docstring:   str | None
-    calls:       list[str]  # names of functions/methods called within this symbol
-    parent:      str | None # class name if this is a method
-    filepath:    str
-    language:    str
+    name: str
+    symbol_type: str  # "function" | "class" | "method" | "interface" | "type"
+    start_line: int  # 0-indexed
+    end_line: int  # 0-indexed, inclusive
+    source: str  # full source text of this symbol
+    signature: str  # compact one-line signature for repo map
+    docstring: str | None
+    calls: list[str]  # names of functions/methods called within this symbol
+    parent: str | None  # class name if this is a method
+    filepath: str
+    language: str
 
 
 # ---------------------------------------------------------------------------
 # Language handler protocol
 # ---------------------------------------------------------------------------
+
 
 class LanguageHandler(Protocol):
     def extract_docstring(self, node, source_bytes: bytes) -> str | None: ...
@@ -108,16 +109,17 @@ class _TypeScriptHandler:
 _DEFAULT_HANDLER = _DefaultHandler()
 
 _HANDLERS: dict[str, LanguageHandler] = {
-    "python":     _PythonHandler(),
+    "python": _PythonHandler(),
     "typescript": _TypeScriptHandler(),
     "javascript": _TypeScriptHandler(),
-    "tsx":        _TypeScriptHandler(),
+    "tsx": _TypeScriptHandler(),
 }
 
 
 # ---------------------------------------------------------------------------
 # Tree-sitter helpers
 # ---------------------------------------------------------------------------
+
 
 @lru_cache(maxsize=16)
 def _load_language(extension: str) -> tuple[Language, dict]:
@@ -133,7 +135,9 @@ def _load_language(extension: str) -> tuple[Language, dict]:
 
 
 def _get_node_text(node, source_bytes: bytes) -> str:
-    return source_bytes[node.start_byte:node.end_byte].decode("utf-8", errors="replace")
+    return source_bytes[node.start_byte : node.end_byte].decode(
+        "utf-8", errors="replace"
+    )
 
 
 def extract_signature(
@@ -241,22 +245,26 @@ def _extract_class_methods(
             if name is None:
                 continue
             source = _get_node_text(child, source_bytes)
-            sig = extract_signature(child, source_bytes, config, "method", name, class_name)
+            sig = extract_signature(
+                child, source_bytes, config, "method", name, class_name
+            )
             docstring = handler.extract_docstring(child, source_bytes)
             calls = extract_calls(child, source_bytes)
-            methods.append(Symbol(
-                name=name,
-                symbol_type="method",
-                start_line=child.start_point[0],
-                end_line=child.end_point[0],
-                source=source,
-                signature=sig,
-                docstring=docstring,
-                calls=calls,
-                parent=class_name,
-                filepath=filepath,
-                language=language_name,
-            ))
+            methods.append(
+                Symbol(
+                    name=name,
+                    symbol_type="method",
+                    start_line=child.start_point[0],
+                    end_line=child.end_point[0],
+                    source=source,
+                    signature=sig,
+                    docstring=docstring,
+                    calls=calls,
+                    parent=class_name,
+                    filepath=filepath,
+                    language=language_name,
+                )
+            )
 
     return methods
 
@@ -264,6 +272,7 @@ def _extract_class_methods(
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
+
 
 def parse_file(filepath: str) -> list[Symbol]:
     """Parse a source file and return a list of Symbol objects.
@@ -274,8 +283,7 @@ def parse_file(filepath: str) -> list[Symbol]:
     ext = Path(filepath).suffix.lower()
     if ext not in LANGUAGES:
         raise UnsupportedLanguageError(
-            f"Unsupported file extension: {ext!r}. "
-            f"Supported: {list(LANGUAGES.keys())}"
+            f"Unsupported file extension: {ext!r}. Supported: {list(LANGUAGES.keys())}"
         )
 
     try:
@@ -314,45 +322,56 @@ def parse_file(filepath: str) -> list[Symbol]:
             name = _get_node_text(name_node, source_bytes)
             source = _get_node_text(node, source_bytes)
             sig = extract_signature(node, source_bytes, config, "function", name, None)
-            symbols.append(Symbol(
-                name=name,
-                symbol_type="function",
-                start_line=node.start_point[0],
-                end_line=node.end_point[0],
-                source=source,
-                signature=sig,
-                docstring=None,
-                calls=extract_calls(node, source_bytes),
-                parent=None,
-                filepath=filepath,
-                language=language_name,
-            ))
+            symbols.append(
+                Symbol(
+                    name=name,
+                    symbol_type="function",
+                    start_line=node.start_point[0],
+                    end_line=node.end_point[0],
+                    source=source,
+                    signature=sig,
+                    docstring=None,
+                    calls=extract_calls(node, source_bytes),
+                    parent=None,
+                    filepath=filepath,
+                    language=language_name,
+                )
+            )
             return
 
         # Class / struct
-        if node.type in ("class_definition", "class_declaration", "class_specifier", "struct_specifier"):
+        if node.type in (
+            "class_definition",
+            "class_declaration",
+            "class_specifier",
+            "struct_specifier",
+        ):
             name_node = node.child_by_field_name("name")
             if name_node is None:
                 return
             name = _get_node_text(name_node, source_bytes)
             source = _get_node_text(node, source_bytes)
             sig = extract_signature(node, source_bytes, config, "class", name, None)
-            symbols.append(Symbol(
-                name=name,
-                symbol_type="class",
-                start_line=node.start_point[0],
-                end_line=node.end_point[0],
-                source=source,
-                signature=sig,
-                docstring=handler.extract_docstring(node, source_bytes),
-                calls=extract_calls(node, source_bytes),
-                parent=None,
-                filepath=filepath,
-                language=language_name,
-            ))
-            symbols.extend(_extract_class_methods(
-                node, source_bytes, config, filepath, language_name, name, handler
-            ))
+            symbols.append(
+                Symbol(
+                    name=name,
+                    symbol_type="class",
+                    start_line=node.start_point[0],
+                    end_line=node.end_point[0],
+                    source=source,
+                    signature=sig,
+                    docstring=handler.extract_docstring(node, source_bytes),
+                    calls=extract_calls(node, source_bytes),
+                    parent=None,
+                    filepath=filepath,
+                    language=language_name,
+                )
+            )
+            symbols.extend(
+                _extract_class_methods(
+                    node, source_bytes, config, filepath, language_name, name, handler
+                )
+            )
             return
 
         # Interface
@@ -363,19 +382,21 @@ def parse_file(filepath: str) -> list[Symbol]:
             name = _get_node_text(name_node, source_bytes)
             source = _get_node_text(node, source_bytes)
             sig = extract_signature(node, source_bytes, config, "interface", name, None)
-            symbols.append(Symbol(
-                name=name,
-                symbol_type="interface",
-                start_line=node.start_point[0],
-                end_line=node.end_point[0],
-                source=source,
-                signature=sig,
-                docstring=None,
-                calls=[],
-                parent=None,
-                filepath=filepath,
-                language=language_name,
-            ))
+            symbols.append(
+                Symbol(
+                    name=name,
+                    symbol_type="interface",
+                    start_line=node.start_point[0],
+                    end_line=node.end_point[0],
+                    source=source,
+                    signature=sig,
+                    docstring=None,
+                    calls=[],
+                    parent=None,
+                    filepath=filepath,
+                    language=language_name,
+                )
+            )
             return
 
         # Type alias
@@ -386,23 +407,29 @@ def parse_file(filepath: str) -> list[Symbol]:
             name = _get_node_text(name_node, source_bytes)
             source = _get_node_text(node, source_bytes)
             sig = extract_signature(node, source_bytes, config, "type", name, None)
-            symbols.append(Symbol(
-                name=name,
-                symbol_type="type",
-                start_line=node.start_point[0],
-                end_line=node.end_point[0],
-                source=source,
-                signature=sig,
-                docstring=None,
-                calls=[],
-                parent=None,
-                filepath=filepath,
-                language=language_name,
-            ))
+            symbols.append(
+                Symbol(
+                    name=name,
+                    symbol_type="type",
+                    start_line=node.start_point[0],
+                    end_line=node.end_point[0],
+                    source=source,
+                    signature=sig,
+                    docstring=None,
+                    calls=[],
+                    parent=None,
+                    filepath=filepath,
+                    language=language_name,
+                )
+            )
             return
 
         # Function / method_definition at top level
-        if node.type in ("function_definition", "function_declaration", "method_definition"):
+        if node.type in (
+            "function_definition",
+            "function_declaration",
+            "method_definition",
+        ):
             name_node = node.child_by_field_name("name")
             if name_node is not None:
                 name = _get_node_text(name_node, source_bytes)
@@ -412,26 +439,36 @@ def parse_file(filepath: str) -> list[Symbol]:
                 return
             source = _get_node_text(node, source_bytes)
             sig = extract_signature(node, source_bytes, config, "function", name, None)
-            symbols.append(Symbol(
-                name=name,
-                symbol_type="function",
-                start_line=node.start_point[0],
-                end_line=node.end_point[0],
-                source=source,
-                signature=sig,
-                docstring=handler.extract_docstring(node, source_bytes),
-                calls=extract_calls(node, source_bytes),
-                parent=None,
-                filepath=filepath,
-                language=language_name,
-            ))
+            symbols.append(
+                Symbol(
+                    name=name,
+                    symbol_type="function",
+                    start_line=node.start_point[0],
+                    end_line=node.end_point[0],
+                    source=source,
+                    signature=sig,
+                    docstring=handler.extract_docstring(node, source_bytes),
+                    calls=extract_calls(node, source_bytes),
+                    parent=None,
+                    filepath=filepath,
+                    language=language_name,
+                )
+            )
             return
 
     def walk_top_level(node) -> None:
         for child in node.children:
-            process_node(child)
-            for extra in handler.extra_nodes(child):
-                process_node(extra)
+            # Unwrap export_statement nodes to get the actual declaration
+            if child.type == "export_statement":
+                for export_child in child.children:
+                    if export_child.type not in ("export", "declare"):
+                        process_node(export_child)
+                        for extra in handler.extra_nodes(export_child):
+                            process_node(extra)
+            else:
+                process_node(child)
+                for extra in handler.extra_nodes(child):
+                    process_node(extra)
 
     try:
         walk_top_level(root)
