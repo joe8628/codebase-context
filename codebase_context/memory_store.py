@@ -59,6 +59,7 @@ class MemoryStore:
         """Insert a session event. Returns the row ID as a string."""
         cur = self._conn.execute(
             "INSERT INTO events(agent, event_type, content, task_id, created_at) VALUES (?,?,?,?,?)",
+            # FTS5 columns must be TEXT; None is stored as "" since NULL is not supported
             (agent, event_type, content, task_id or "", str(int(time.time()))),
         )
         self._conn.commit()
@@ -71,25 +72,36 @@ class MemoryStore:
         agent: str | None = None,
         event_type: str | None = None,
     ) -> list[dict]:
-        """FTS5 full-text search over events. Post-filters by agent or event_type if given."""
-        rows = self._conn.execute(
-            "SELECT rowid, agent, event_type, content, task_id, created_at "
-            "FROM events WHERE events MATCH ? ORDER BY rank LIMIT ?",
-            (query, limit),
-        ).fetchall()
+        """FTS5 full-text search over events.
 
-        results = []
-        for row in rows:
-            if agent and row["agent"] != agent:
-                continue
-            if event_type and row["event_type"] != event_type:
-                continue
-            results.append({
+        Filters are pushed into SQL so LIMIT applies to already-filtered results.
+        FTS5 supports filtering on UNINDEXED columns alongside MATCH.
+        """
+        sql = (
+            "SELECT rowid, agent, event_type, content, task_id, created_at "
+            "FROM events WHERE events MATCH ?"
+        )
+        params: list = [query]
+
+        if agent is not None:
+            sql += " AND agent = ?"
+            params.append(agent)
+        if event_type is not None:
+            sql += " AND event_type = ?"
+            params.append(event_type)
+
+        sql += " ORDER BY rank LIMIT ?"
+        params.append(limit)
+
+        rows = self._conn.execute(sql, params).fetchall()
+        return [
+            {
                 "id": str(row["rowid"]),
                 "agent": row["agent"],
                 "event_type": row["event_type"],
                 "content": row["content"],
                 "task_id": row["task_id"],
                 "created_at": row["created_at"],
-            })
-        return results
+            }
+            for row in rows
+        ]
