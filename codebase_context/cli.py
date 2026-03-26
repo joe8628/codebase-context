@@ -237,6 +237,41 @@ def clear(ctx: click.Context, confirm: bool) -> None:
     click.echo("Index and repo map cleared.")
 
 
+@cli.command()
+def upgrade() -> None:
+    """Upgrade codebase-context to the latest version from GitHub."""
+    github_url = "git+https://github.com/joe8628/codebase-context"
+    exe = Path(sys.executable).resolve()
+    uv_tools_dir = Path.home() / ".local" / "share" / "uv" / "tools"
+    pipx_venvs_dir = Path.home() / ".local" / "share" / "pipx" / "venvs"
+
+    # True when running inside a virtualenv / uv venv (sys.prefix is overridden)
+    in_venv = hasattr(sys, "real_prefix") or sys.prefix != sys.base_prefix
+
+    if uv_tools_dir.exists() and exe.is_relative_to(uv_tools_dir):
+        cmd = ["uv", "tool", "upgrade", "codebase-context"]
+        method = "uv"
+    elif pipx_venvs_dir.exists() and exe.is_relative_to(pipx_venvs_dir):
+        cmd = ["pipx", "upgrade", "codebase-context"]
+        method = "pipx"
+    elif in_venv:
+        # Inside an explicit virtualenv — pip works without --user
+        cmd = [sys.executable, "-m", "pip", "install", "--upgrade", github_url]
+        method = "pip (venv)"
+    else:
+        # System/user install — --user avoids PEP 668 externally-managed-environment error
+        cmd = [sys.executable, "-m", "pip", "install", "--user", "--upgrade", github_url]
+        method = "pip --user"
+
+    click.echo(f"Upgrading via {method}...")
+    result = subprocess.run(cmd)
+    if result.returncode == 0:
+        click.echo("✓ codebase-context upgraded successfully")
+    else:
+        click.echo("✗ Upgrade failed", err=True)
+        sys.exit(1)
+
+
 @cli.command("install-hook")
 @click.pass_context
 def install_hook(ctx: click.Context) -> None:
