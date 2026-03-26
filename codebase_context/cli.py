@@ -44,6 +44,7 @@ def init(ctx: click.Context) -> None:
     from codebase_context.indexer import Indexer
 
     root = ctx.obj["root"]
+    click.echo(f"ccindex v{_VERSION}")
     click.echo(f"Indexing {root}...")
 
     indexer = Indexer(root)
