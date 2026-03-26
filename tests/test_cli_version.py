@@ -25,6 +25,7 @@ def test_version_flag_contains_version_string(runner):
     assert re.search(r"\d+\.\d+\.\d+", result.output)
 
 
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 import json
 
@@ -144,3 +145,70 @@ def test_upgrade_proceeds_when_network_unavailable(runner, monkeypatch):
             mock_run.return_value = MagicMock(returncode=0)
             result = runner.invoke(cli, ["upgrade"])
     assert "Already up to date" not in result.output
+
+
+# ── ccindex release ─────────────────────────────────────────────────────────
+
+def test_release_computes_patch_bump(runner, monkeypatch, tmp_path):
+    _setup_release_files(tmp_path, "2.0.0")
+    monkeypatch.setattr("codebase_context.cli._VERSION", "2.0.0")
+    with patch("codebase_context.cli._release_project_root", return_value=tmp_path):
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(returncode=0)
+            result = runner.invoke(cli, ["release"], input="patch\ny\ny\nn\n")
+    assert "2.0.1" in result.output
+    assert (tmp_path / "pyproject.toml").read_text().count("2.0.1") == 1
+    assert (tmp_path / "codebase_context" / "__init__.py").read_text().count("2.0.1") == 1
+
+
+def test_release_computes_minor_bump(runner, monkeypatch, tmp_path):
+    _setup_release_files(tmp_path, "2.0.0")
+    monkeypatch.setattr("codebase_context.cli._VERSION", "2.0.0")
+    with patch("codebase_context.cli._release_project_root", return_value=tmp_path):
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(returncode=0)
+            result = runner.invoke(cli, ["release"], input="minor\ny\ny\nn\n")
+    assert "2.1.0" in result.output
+
+
+def test_release_computes_major_bump(runner, monkeypatch, tmp_path):
+    _setup_release_files(tmp_path, "2.0.0")
+    monkeypatch.setattr("codebase_context.cli._VERSION", "2.0.0")
+    with patch("codebase_context.cli._release_project_root", return_value=tmp_path):
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(returncode=0)
+            result = runner.invoke(cli, ["release"], input="major\ny\ny\nn\n")
+    assert "3.0.0" in result.output
+
+
+def test_release_aborts_on_n_at_commit(runner, monkeypatch, tmp_path):
+    _setup_release_files(tmp_path, "2.0.0")
+    monkeypatch.setattr("codebase_context.cli._VERSION", "2.0.0")
+    with patch("codebase_context.cli._release_project_root", return_value=tmp_path):
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(returncode=0)
+            result = runner.invoke(cli, ["release"], input="patch\nn\n")
+    assert "Aborted" in result.output
+    # files must NOT be written when user declines the commit
+    assert "2.0.0" in (tmp_path / "pyproject.toml").read_text()
+    assert "2.0.1" not in (tmp_path / "pyproject.toml").read_text()
+
+
+def test_release_stops_at_tag_if_n(runner, monkeypatch, tmp_path):
+    _setup_release_files(tmp_path, "2.0.0")
+    monkeypatch.setattr("codebase_context.cli._VERSION", "2.0.0")
+    with patch("codebase_context.cli._release_project_root", return_value=tmp_path):
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(returncode=0)
+            # confirm commit, decline tag
+            result = runner.invoke(cli, ["release"], input="patch\ny\nn\n")
+    assert "git tag" in result.output   # shows the manual command hint
+
+
+def _setup_release_files(tmp_path: Path, version: str) -> None:
+    """Populate tmp_path with the two files ccindex release edits."""
+    pyproject = tmp_path / "pyproject.toml"
+    pyproject.write_text(f'version     = "{version}"\n')
+    init_dir = tmp_path / "codebase_context"
+    init_dir.mkdir()
+    (init_dir / "__init__.py").write_text(f'__version__ = "{version}"\n')

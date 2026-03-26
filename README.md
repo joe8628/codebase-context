@@ -143,6 +143,7 @@ manually, add it to `.claude/settings.json` (per-project) or
 ccindex init            Full index of current project
 ccindex update          Incremental index (changed files only)
 ccindex upgrade         Upgrade codebase-context to latest version from GitHub
+ccindex version         Show installed version and check for updates
 ccindex watch           Real-time file watcher
 ccindex search <query>  Semantic search from terminal
   --top-k N             Number of results (default: 5)
@@ -157,6 +158,7 @@ ccindex uninstall-hook  Remove git post-commit hook
 ccindex serve           Start MCP server (used by Claude Code)
 ccindex mem-serve       Start memgram memory MCP server (used by Claude Code)
 ccindex migrate         Migrate HANDOFF.md / DECISIONS.md into memgram
+ccindex release         Bump version, tag, push, create GitHub Release
 ```
 
 ## Adding New Languages

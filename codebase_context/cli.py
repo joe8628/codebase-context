@@ -390,6 +390,132 @@ _EXTERNAL_DEPS: list[tuple[str, str, str, str | None, str | None]] = [
 ]
 
 
+def _release_project_root() -> Path:
+    """Return the root of the codebase-context source tree.
+
+    Looks for pyproject.toml containing 'codebase-context' in the current
+    working directory. Exits with a helpful message if not found — ccindex
+    release must be run from the checked-out source repo.
+    """
+    cwd = Path.cwd()
+    pyproject = cwd / "pyproject.toml"
+    if pyproject.exists() and "codebase-context" in pyproject.read_text():
+        return cwd
+    click.echo(
+        "✗ Run ccindex release from the codebase-context source directory.\n"
+        "  (pyproject.toml with name 'codebase-context' not found in cwd)",
+        err=True,
+    )
+    sys.exit(1)
+
+
+@cli.command("release")
+def release_cmd() -> None:
+    """Interactive wizard: bump version, commit, tag, push, create GitHub Release."""
+    current = _VERSION
+    click.echo(f"Current version: {current}")
+
+    bump = click.prompt(
+        "Bump type",
+        type=click.Choice(["patch", "minor", "major"]),
+    )
+
+    major, minor, patch_num = (int(x) for x in current.split(".")[:3])
+    if bump == "major":
+        new_version = f"{major + 1}.0.0"
+    elif bump == "minor":
+        new_version = f"{major}.{minor + 1}.0"
+    else:
+        new_version = f"{major}.{minor}.{patch_num + 1}"
+
+    click.echo(f"→ New version: {new_version}\n")
+
+    root = _release_project_root()
+    pyproject_path = root / "pyproject.toml"
+    init_path = root / "codebase_context" / "__init__.py"
+
+    pyproject_text = pyproject_path.read_text()
+    new_pyproject = pyproject_text.replace(
+        f'version     = "{current}"', f'version     = "{new_version}"'
+    )
+    if new_pyproject == pyproject_text:
+        click.echo("  ✗ version string not found in pyproject.toml", err=True)
+        sys.exit(1)
+
+    init_text = init_path.read_text()
+    new_init = init_text.replace(
+        f'__version__ = "{current}"', f'__version__ = "{new_version}"'
+    )
+    if new_init == init_text:
+        click.echo("  ✗ __version__ string not found in __init__.py", err=True)
+        sys.exit(1)
+
+    click.echo(f"  pyproject.toml : version {current!r} → {new_version!r}")
+    click.echo(f"  __init__.py    : __version__ {current!r} → {new_version!r}")
+
+    if not click.confirm("\nCommit version bump?", default=True):
+        click.echo("Aborted.")
+        return
+
+    pyproject_path.write_text(new_pyproject)
+    init_path.write_text(new_init)
+
+    result = subprocess.run(
+        ["git", "commit", "-am", f"chore: bump version to v{new_version}"],
+        capture_output=True, text=True,
+    )
+    if result.returncode != 0:
+        click.echo(f"  ✗ git commit failed: {result.stderr.strip()}", err=True)
+        sys.exit(1)
+    click.echo("  ✓ Committed")
+
+    tag = f"v{new_version}"
+    if not click.confirm(f"\nCreate tag {tag}?", default=True):
+        click.echo(f"Skipped tagging. Run: git tag {tag}")
+        return
+
+    result = subprocess.run(["git", "tag", tag], capture_output=True, text=True)
+    if result.returncode != 0:
+        click.echo(f"  ✗ git tag failed: {result.stderr.strip()}", err=True)
+        sys.exit(1)
+    click.echo(f"  ✓ Tagged {tag}")
+
+    if not click.confirm("\nPush commit and tag?", default=True):
+        click.echo("Skipped push. Run: git push && git push --tags")
+        return
+
+    for push_cmd in [["git", "push"], ["git", "push", "--tags"]]:
+        result = subprocess.run(push_cmd, capture_output=True, text=True)
+        if result.returncode != 0:
+            click.echo(f"  ✗ {' '.join(push_cmd)} failed: {result.stderr.strip()}", err=True)
+            sys.exit(1)
+    click.echo("  ✓ Pushed")
+
+    if not shutil.which("gh"):
+        click.echo("\nTo create a GitHub Release manually:")
+        click.echo(f"  https://github.com/joe8628/codebase-context/releases/new?tag={tag}")
+        return
+
+    if not click.confirm("\nCreate GitHub Release?", default=True):
+        click.echo(f"Skipped. Run: gh release create {tag}")
+        return
+
+    title = click.prompt("Release title", default=tag)
+    notes = click.prompt("Release notes (leave blank to auto-generate from commits)", default="")
+
+    gh_cmd = ["gh", "release", "create", tag, "--title", title]
+    gh_cmd += ["--notes", notes] if notes else ["--generate-notes"]
+
+    result = subprocess.run(gh_cmd, capture_output=True, text=True)
+    if result.returncode == 0:
+        click.echo(f"\n  ✓ Released {tag}")
+        if result.stdout.strip():
+            click.echo(f"  {result.stdout.strip()}")
+    else:
+        click.echo(f"  ✗ gh release create failed: {result.stderr.strip()}", err=True)
+        sys.exit(1)
+
+
 def _setup_external_deps() -> None:
     """Check for required external binaries and offer to install missing ones."""
     missing = [dep for dep in _EXTERNAL_DEPS if not shutil.which(dep[0])]
