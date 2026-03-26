@@ -153,10 +153,19 @@ def test_run_migration_raises_if_already_migrated(tmp_path):
         run_migration(str(tmp_path))
 
 
+def test_run_migration_raises_if_decisions_archive_exists(tmp_path):
+    (tmp_path / "DECISIONS.md.migrated").write_text("old", encoding="utf-8")
+
+    with pytest.raises(AlreadyMigratedError):
+        run_migration(str(tmp_path))
+
+
 def test_run_migration_returns_zeros_when_nothing_to_migrate(tmp_path):
     handoff_count, decision_count = run_migration(str(tmp_path))
     assert handoff_count == 0
     assert decision_count == 0
+    assert not (tmp_path / "HANDOFF.md.migrated").exists()
+    assert not (tmp_path / "DECISIONS.md.migrated").exists()
 
 
 def test_run_migration_handles_missing_decisions_file(tmp_path):
@@ -215,3 +224,16 @@ def test_cli_migrate_nothing_to_migrate(tmp_path):
 
     assert result.exit_code == 0
     assert "Nothing to migrate" in result.output
+
+
+def test_cli_migrate_prints_both_counts(tmp_path):
+    (tmp_path / "HANDOFF.md").write_text(_HANDOFF_TEXT, encoding="utf-8")
+    (tmp_path / "DECISIONS.md").write_text(_DECISIONS_TEXT, encoding="utf-8")
+    (tmp_path / ".claude").mkdir()
+
+    runner = CliRunner()
+    result = runner.invoke(cli, ["--root", str(tmp_path), "migrate"])
+
+    assert result.exit_code == 0
+    assert "1 handoff" in result.output
+    assert "2 decision" in result.output
