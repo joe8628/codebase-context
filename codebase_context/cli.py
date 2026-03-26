@@ -14,8 +14,15 @@ import click
 from codebase_context.config import EMBED_MODEL
 from codebase_context.utils import find_project_root
 
+try:
+    from importlib.metadata import version as _meta_version
+    _VERSION = _meta_version("codebase-context")
+except Exception:
+    _VERSION = "0.0.0+dev"
+
 
 @click.group()
+@click.version_option(_VERSION, prog_name="ccindex")
 @click.option(
     "--root",
     default=None,
@@ -496,3 +503,14 @@ def _update_gitignore(project_root: str) -> None:
     new_content = content.rstrip("\n") + "\n\n" + "\n".join(additions) + "\n"
     gitignore_path.write_text(new_content, encoding="utf-8")
     click.echo("  Updated .gitignore with .codebase-context/ entries")
+
+
+def _fetch_latest_release() -> tuple[str, str] | None:
+    return None  # stub — implemented in Task 2
+
+
+def _parse_version(v: str) -> tuple[int, ...]:
+    try:
+        return tuple(int(x) for x in v.lstrip("v").split("."))
+    except ValueError:
+        return (0,)
