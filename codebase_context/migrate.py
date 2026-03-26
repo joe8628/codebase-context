@@ -83,21 +83,25 @@ def run_migration(project_root: str) -> tuple[int, int]:
     db_path = str(root / ".claude" / "memgram.db")
     store = MemgramStore(db_path)
 
-    handoff_count = 0
-    decision_count = 0
+    handoff_blocks: list[dict] = []
+    decision_blocks: list[dict] = []
 
     if handoff_path.exists():
-        blocks = parse_handoff_blocks(handoff_path.read_text(encoding="utf-8"))
-        for block in blocks:
-            store.save(block["title"], block["content"], block["type"])
-        handoff_count = len(blocks)
+        handoff_blocks = parse_handoff_blocks(handoff_path.read_text(encoding="utf-8"))
+
+    if decisions_path.exists():
+        decision_blocks = parse_decision_blocks(decisions_path.read_text(encoding="utf-8"))
+
+    for block in handoff_blocks:
+        store.save(block["title"], block["content"], block["type"])
+
+    for block in decision_blocks:
+        store.save(block["title"], block["content"], block["type"])
+
+    if handoff_path.exists():
         handoff_path.rename(archived_handoff)
 
     if decisions_path.exists():
-        blocks = parse_decision_blocks(decisions_path.read_text(encoding="utf-8"))
-        for block in blocks:
-            store.save(block["title"], block["content"], block["type"])
-        decision_count = len(blocks)
         decisions_path.rename(archived_decisions)
 
-    return (handoff_count, decision_count)
+    return (len(handoff_blocks), len(decision_blocks))
