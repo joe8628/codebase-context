@@ -207,7 +207,7 @@ def migrate(ctx: click.Context) -> None:
         handoff_count, decision_count = run_migration(root)
     except AlreadyMigratedError as exc:
         click.echo(f"Warning: {exc}", err=True)
-        raise SystemExit(1)
+        sys.exit(1)
 
     if handoff_count == 0 and decision_count == 0:
         click.echo("Nothing to migrate.")
