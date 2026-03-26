@@ -250,6 +250,14 @@ def clear(ctx: click.Context, confirm: bool) -> None:
 def upgrade(debug: bool) -> None:
     """Upgrade codebase-context to the latest version from GitHub."""
     github_url = "git+https://github.com/joe8628/codebase-context"
+
+    release = _fetch_latest_release()
+    if release is not None:
+        latest, _ = release
+        if _parse_version(latest) <= _parse_version(_VERSION):
+            click.echo(f"Already up to date ({_VERSION})")
+            return
+
     exe = Path(sys.executable).resolve()
     uv_tools_dir = Path.home() / ".local" / "share" / "uv" / "tools"
     pipx_venvs_dir = Path.home() / ".local" / "share" / "pipx" / "venvs"

@@ -108,3 +108,39 @@ def test_version_cmd_no_network(runner, monkeypatch):
     assert result.exit_code == 0
     assert "2.0.0" in result.output
     assert "could not check" in result.output
+
+
+# ── ccindex upgrade pre-check ───────────────────────────────────────────────
+
+def test_upgrade_skips_when_already_up_to_date(runner, monkeypatch):
+    monkeypatch.setattr("codebase_context.cli._VERSION", "2.0.0")
+    with patch("codebase_context.cli._fetch_latest_release", return_value=("2.0.0", "https://...")):
+        result = runner.invoke(cli, ["upgrade"])
+    assert result.exit_code == 0
+    assert "Already up to date" in result.output
+
+
+def test_upgrade_skips_when_installed_is_newer(runner, monkeypatch):
+    monkeypatch.setattr("codebase_context.cli._VERSION", "2.1.0")
+    with patch("codebase_context.cli._fetch_latest_release", return_value=("2.0.0", "https://...")):
+        result = runner.invoke(cli, ["upgrade"])
+    assert result.exit_code == 0
+    assert "Already up to date" in result.output
+
+
+def test_upgrade_proceeds_when_update_available(runner, monkeypatch):
+    monkeypatch.setattr("codebase_context.cli._VERSION", "2.0.0")
+    with patch("codebase_context.cli._fetch_latest_release", return_value=("2.1.0", "https://...")):
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(returncode=0)
+            result = runner.invoke(cli, ["upgrade"])
+    assert "Already up to date" not in result.output
+
+
+def test_upgrade_proceeds_when_network_unavailable(runner, monkeypatch):
+    monkeypatch.setattr("codebase_context.cli._VERSION", "2.0.0")
+    with patch("codebase_context.cli._fetch_latest_release", return_value=None):
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(returncode=0)
+            result = runner.invoke(cli, ["upgrade"])
+    assert "Already up to date" not in result.output
