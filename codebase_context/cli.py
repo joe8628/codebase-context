@@ -333,6 +333,22 @@ def mem_serve() -> None:
     run_server()
 
 
+@cli.command("version")
+def version_cmd() -> None:
+    """Show installed version and check for updates."""
+    click.echo(f"Installed:  {_VERSION}")
+    release = _fetch_latest_release()
+    if release is None:
+        click.echo("Latest:     (could not check for updates)")
+        return
+    latest, url = release
+    if _parse_version(latest) > _parse_version(_VERSION):
+        click.echo(f"Latest:     {latest}  \u2190 update available")
+        click.echo(f"            {url}")
+    else:
+        click.echo(f"Latest:     {latest}  \u2713 up to date")
+
+
 _MCP_ENTRY = {"command": "ccindex", "args": ["serve"], "type": "stdio"}
 _MCP_KEY = "codebase-context"
 _MEMGRAM_KEY = "memgram"
@@ -507,10 +523,22 @@ def _update_gitignore(project_root: str) -> None:
 
 
 def _fetch_latest_release() -> tuple[str, str] | None:
-    return None  # stub — implemented in Task 2
+    """Return (version, html_url) of the latest GitHub release, or None on any error."""
+    import urllib.request
+    url = "https://api.github.com/repos/joe8628/codebase-context/releases/latest"
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": "ccindex"})
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            data = json.loads(resp.read())
+        tag = data.get("tag_name", "").lstrip("v")
+        html_url = data.get("html_url", "")
+        return (tag, html_url) if tag else None
+    except Exception:
+        return None
 
 
 def _parse_version(v: str) -> tuple[int, ...]:
+    """Parse a semver string into a comparable tuple. Returns (0,) on invalid input."""
     try:
         return tuple(int(x) for x in v.lstrip("v").split("."))
     except ValueError:
