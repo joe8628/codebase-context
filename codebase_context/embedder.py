@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 from codebase_context.config import EMBED_BATCH_SIZE, EMBED_MODEL
+from codebase_context.utils import find_project_root
 
 if TYPE_CHECKING:
     from fastembed import TextEmbedding
@@ -99,6 +100,27 @@ class Embedder:
         logger.info("Local model seeded to fastembed cache at %s.", snapshot_dir)
         return True
 
+    def _resolve_models_dir(self) -> str:
+        """Return the models directory to use for local seeding.
+
+        Resolution order:
+        1. ``CC_MODELS_DIR`` environment variable (explicit override).
+        2. ``models/`` folder inside the project root (auto-detected via
+           the nearest ``.git`` directory from the current working directory).
+        3. Empty string — no local seeding, fastembed will attempt a download.
+        """
+        models_dir = os.environ.get("CC_MODELS_DIR", "")
+        if models_dir:
+            return models_dir
+        try:
+            project_root = find_project_root()
+            candidate = Path(project_root) / "models"
+            if candidate.is_dir():
+                return str(candidate)
+        except Exception:
+            pass
+        return ""
+
     def _get_model(self) -> "TextEmbedding":
         if self._model is None:
             with self._lock:
@@ -110,7 +132,7 @@ class Embedder:
                     from fastembed import TextEmbedding
 
                     cache_dir = os.path.expanduser("~/.cache/fastembed")
-                    models_dir = os.environ.get("CC_MODELS_DIR", "")
+                    models_dir = self._resolve_models_dir()
 
                     if models_dir and self._seed_local_to_hf_cache(cache_dir, models_dir):
                         # Cache is ready; prevent any download attempt.
