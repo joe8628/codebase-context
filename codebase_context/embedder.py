@@ -117,8 +117,8 @@ class Embedder:
             candidate = Path(project_root) / "models"
             if candidate.is_dir():
                 return str(candidate)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Could not auto-detect project root for models/ lookup: %s", exc)
         return ""
 
     def _get_model(self) -> "TextEmbedding":
