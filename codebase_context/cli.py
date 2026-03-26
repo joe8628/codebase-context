@@ -259,13 +259,16 @@ def upgrade(debug: bool) -> None:
             return
 
     exe = Path(sys.executable).resolve()
+    # uv reuses the system Python binary, so sys.executable won't be inside the
+    # tools dir.  Use sys.prefix instead — uv sets it to the tool's venv root.
+    prefix = Path(sys.prefix).resolve()
     uv_tools_dir = Path.home() / ".local" / "share" / "uv" / "tools"
     pipx_venvs_dir = Path.home() / ".local" / "share" / "pipx" / "venvs"
     in_venv = hasattr(sys, "real_prefix") or sys.prefix != sys.base_prefix
 
     if debug:
         click.echo(f"  sys.executable : {exe}")
-        click.echo(f"  sys.prefix     : {sys.prefix}")
+        click.echo(f"  sys.prefix     : {prefix}")
         click.echo(f"  sys.base_prefix: {sys.base_prefix}")
         click.echo(f"  in_venv        : {in_venv}")
         click.echo(f"  uv_tools_dir   : {uv_tools_dir}  (exists={uv_tools_dir.exists()})")
@@ -274,10 +277,10 @@ def upgrade(debug: bool) -> None:
         click.echo(f"  which pipx     : {shutil.which('pipx')}")
         click.echo(f"  which ccindex  : {shutil.which('ccindex')}")
 
-    if uv_tools_dir.exists() and exe.is_relative_to(uv_tools_dir):
+    if uv_tools_dir.exists() and prefix.is_relative_to(uv_tools_dir):
         cmd = ["uv", "tool", "upgrade", "codebase-context"]
         method = "uv tool upgrade"
-    elif pipx_venvs_dir.exists() and exe.is_relative_to(pipx_venvs_dir):
+    elif pipx_venvs_dir.exists() and prefix.is_relative_to(pipx_venvs_dir):
         cmd = ["pipx", "upgrade", "codebase-context"]
         method = "pipx upgrade"
     elif in_venv:
