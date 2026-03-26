@@ -238,37 +238,59 @@ def clear(ctx: click.Context, confirm: bool) -> None:
 
 
 @cli.command()
-def upgrade() -> None:
+@click.option("--debug", is_flag=True, help="Print install-method detection details.")
+def upgrade(debug: bool) -> None:
     """Upgrade codebase-context to the latest version from GitHub."""
     github_url = "git+https://github.com/joe8628/codebase-context"
     exe = Path(sys.executable).resolve()
     uv_tools_dir = Path.home() / ".local" / "share" / "uv" / "tools"
     pipx_venvs_dir = Path.home() / ".local" / "share" / "pipx" / "venvs"
-
-    # True when running inside a virtualenv / uv venv (sys.prefix is overridden)
     in_venv = hasattr(sys, "real_prefix") or sys.prefix != sys.base_prefix
+
+    if debug:
+        click.echo(f"  sys.executable : {exe}")
+        click.echo(f"  sys.prefix     : {sys.prefix}")
+        click.echo(f"  sys.base_prefix: {sys.base_prefix}")
+        click.echo(f"  in_venv        : {in_venv}")
+        click.echo(f"  uv_tools_dir   : {uv_tools_dir}  (exists={uv_tools_dir.exists()})")
+        click.echo(f"  pipx_venvs_dir : {pipx_venvs_dir}  (exists={pipx_venvs_dir.exists()})")
+        click.echo(f"  which uv       : {shutil.which('uv')}")
+        click.echo(f"  which pipx     : {shutil.which('pipx')}")
+        click.echo(f"  which ccindex  : {shutil.which('ccindex')}")
 
     if uv_tools_dir.exists() and exe.is_relative_to(uv_tools_dir):
         cmd = ["uv", "tool", "upgrade", "codebase-context"]
-        method = "uv"
+        method = "uv tool upgrade"
     elif pipx_venvs_dir.exists() and exe.is_relative_to(pipx_venvs_dir):
         cmd = ["pipx", "upgrade", "codebase-context"]
-        method = "pipx"
+        method = "pipx upgrade"
     elif in_venv:
-        # Inside an explicit virtualenv — pip works without --user
+        # Inside an explicit virtualenv — pip works without flags
         cmd = [sys.executable, "-m", "pip", "install", "--upgrade", github_url]
         method = "pip (venv)"
+    elif shutil.which("uv"):
+        # uv available but ccindex not in uv's tools dir — use uv tool install --force
+        # This avoids PEP 668 entirely by creating an isolated uv-managed environment
+        cmd = ["uv", "tool", "install", "--force", github_url]
+        method = "uv tool install --force"
+    elif shutil.which("pipx"):
+        cmd = ["pipx", "install", "--force", github_url]
+        method = "pipx install --force"
     else:
-        # System/user install — --user avoids PEP 668 externally-managed-environment error
-        cmd = [sys.executable, "-m", "pip", "install", "--user", "--upgrade", github_url]
-        method = "pip --user"
+        # Last resort: bypass externally-managed restriction.
+        # --user is also blocked on some Debian/Ubuntu images, so use --break-system-packages.
+        cmd = [sys.executable, "-m", "pip", "install", "--break-system-packages", "--upgrade", github_url]
+        method = "pip --break-system-packages"
 
     click.echo(f"Upgrading via {method}...")
     result = subprocess.run(cmd)
     if result.returncode == 0:
         click.echo("✓ codebase-context upgraded successfully")
     else:
-        click.echo("✗ Upgrade failed", err=True)
+        click.echo("✗ Upgrade failed. Run with --debug to see detection details.", err=True)
+        click.echo("  Manual options:", err=True)
+        click.echo(f"    uv tool install --force {github_url}", err=True)
+        click.echo(f"    pipx install --force {github_url}", err=True)
         sys.exit(1)
 
 
