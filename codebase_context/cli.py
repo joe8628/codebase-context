@@ -15,9 +15,9 @@ from codebase_context.config import EMBED_MODEL
 from codebase_context.utils import find_project_root
 
 try:
-    from importlib.metadata import version as _meta_version
+    from importlib.metadata import version as _meta_version, PackageNotFoundError as _PkgNotFound
     _VERSION = _meta_version("codebase-context")
-except Exception:
+except _PkgNotFound:
     _VERSION = "0.0.0+dev"
 
 

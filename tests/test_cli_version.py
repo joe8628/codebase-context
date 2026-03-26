@@ -2,9 +2,7 @@
 """Tests for ccindex version control commands."""
 from __future__ import annotations
 
-import json
-from pathlib import Path
-from unittest.mock import MagicMock, patch
+import re
 
 import pytest
 from click.testing import CliRunner
@@ -24,5 +22,4 @@ def test_version_flag_exits_0(runner):
 
 def test_version_flag_contains_version_string(runner):
     result = runner.invoke(cli, ["--version"])
-    import re
     assert re.search(r"\d+\.\d+\.\d+", result.output)
