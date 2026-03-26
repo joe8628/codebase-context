@@ -1,4 +1,4 @@
-"""Tests for Embedder._seed_local_to_hf_cache (airgapped model seeding)."""
+"""Tests for Embedder airgapped helpers: _seed_local_to_hf_cache and _resolve_models_dir."""
 
 from __future__ import annotations
 
