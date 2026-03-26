@@ -197,6 +197,28 @@ def stats(ctx: click.Context) -> None:
 
 
 @cli.command()
+@click.pass_context
+def migrate(ctx: click.Context) -> None:
+    """Migrate HANDOFF.md and DECISIONS.md into the memgram memory layer."""
+    from codebase_context.migrate import AlreadyMigratedError, run_migration
+
+    root = ctx.obj["root"]
+    try:
+        handoff_count, decision_count = run_migration(root)
+    except AlreadyMigratedError as exc:
+        click.echo(f"Warning: {exc}", err=True)
+        raise SystemExit(1)
+
+    if handoff_count == 0 and decision_count == 0:
+        click.echo("Nothing to migrate.")
+        return
+
+    click.echo(
+        f"Migrated {handoff_count} handoff records and {decision_count} decision records."
+    )
+
+
+@cli.command()
 @click.option("--confirm", is_flag=True, required=True, help="Required: confirm deletion")
 @click.pass_context
 def clear(ctx: click.Context, confirm: bool) -> None:
