@@ -179,6 +179,17 @@ def test_run_migration_handles_missing_decisions_file(tmp_path):
     assert (tmp_path / "HANDOFF.md.migrated").exists()
 
 
+def test_run_migration_handles_missing_handoff_file(tmp_path):
+    (tmp_path / "DECISIONS.md").write_text(_DECISIONS_TEXT, encoding="utf-8")
+    (tmp_path / ".claude").mkdir()
+
+    handoff_count, decision_count = run_migration(str(tmp_path))
+
+    assert handoff_count == 0
+    assert decision_count == 2
+    assert (tmp_path / "DECISIONS.md.migrated").exists()
+
+
 def test_run_migration_records_saved_to_store(tmp_path):
     from codebase_context.memgram.store import MemgramStore
 
