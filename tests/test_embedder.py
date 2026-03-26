@@ -127,3 +127,36 @@ def test_idempotent_on_repeated_calls(tmp_path):
     # Second call must not raise (refs/main already exists → early return)
     result = embedder._seed_local_to_hf_cache(str(cache_dir), str(local_models))
     assert result is True
+
+
+# ---------------------------------------------------------------------------
+# _resolve_models_dir
+# ---------------------------------------------------------------------------
+
+
+def test_resolve_models_dir_uses_env_var(monkeypatch):
+    """CC_MODELS_DIR takes precedence over auto-detection."""
+    monkeypatch.setenv("CC_MODELS_DIR", "/explicit/path")
+    embedder = Embedder()
+    assert embedder._resolve_models_dir() == "/explicit/path"
+
+
+def test_resolve_models_dir_autodetects_project_models(tmp_path, monkeypatch):
+    """Returns <project_root>/models when it exists and CC_MODELS_DIR is unset."""
+    (tmp_path / ".git").mkdir()
+    (tmp_path / "models").mkdir()
+    monkeypatch.delenv("CC_MODELS_DIR", raising=False)
+    monkeypatch.chdir(tmp_path)
+
+    embedder = Embedder()
+    assert embedder._resolve_models_dir() == str(tmp_path / "models")
+
+
+def test_resolve_models_dir_returns_empty_when_no_models_folder(tmp_path, monkeypatch):
+    """Returns empty string when CC_MODELS_DIR is unset and no models/ folder exists."""
+    (tmp_path / ".git").mkdir()
+    monkeypatch.delenv("CC_MODELS_DIR", raising=False)
+    monkeypatch.chdir(tmp_path)
+
+    embedder = Embedder()
+    assert embedder._resolve_models_dir() == ""
