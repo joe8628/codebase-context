@@ -86,6 +86,7 @@ def init(ctx: click.Context) -> None:
     _setup_mcp_server(root)
 
     _setup_memgram(root)
+    _write_session_protocol(root)
 
 
 @cli.command()
@@ -365,6 +366,30 @@ _MCP_ENTRY = {"command": "ccindex", "args": ["serve"], "type": "stdio"}
 _MCP_KEY = "codebase-context"
 _MEMGRAM_KEY = "memgram"
 
+_MEMGRAM_PROTOCOL_SENTINEL = "mem_context"
+_MEMGRAM_SESSION_PROTOCOL = """
+## Session Protocol
+
+**At the start of every session:**
+1. Run `git pull`.
+2. Call `mem_context` (memgram MCP) to load prior memories for this project.
+3. Read `CONVENTIONS.md`.
+
+**During every session:**
+- After each significant finding, bugfix, or decision: call `mem_save`:
+  - `title`: verb + what (e.g. "Fixed N+1 query in UserList")
+  - `type`: `handoff` | `decision` | `bugfix` | `architecture` | `discovery`
+  - `content`: freeform with ## What / ## Why / ## Where / ## Learned sections
+
+**After every completed feature or fix:**
+1. Call `mem_save` summarising what was completed (`type: handoff`).
+2. Call `mem_session_end` with a one-line summary.
+3. Commit and push code only: `git add <changed files> && git commit && git push`
+
+> Do not write to HANDOFF.md or DECISIONS.md — they are removed.
+> Query past decisions with: `mem_search(query="<topic>", type="decision")`
+"""
+
 # (binary, label, method, install_arg, fallback_url)
 # method: "brew" | "npm" | "manual"
 # install_arg: brew formula, npm package(s), or None
@@ -631,6 +656,19 @@ def _setup_memgram(project_root: str) -> None:
         }
         settings_path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
         click.echo("  Added memgram MCP to .claude/settings.json")
+
+
+def _write_session_protocol(project_root: str) -> None:
+    """Append the memgram session protocol to CLAUDE.md if not already present."""
+    claude_md = Path(project_root) / "CLAUDE.md"
+    if claude_md.exists():
+        text = claude_md.read_text(encoding="utf-8")
+        if _MEMGRAM_PROTOCOL_SENTINEL in text:
+            return
+        claude_md.write_text(text.rstrip("\n") + _MEMGRAM_SESSION_PROTOCOL, encoding="utf-8")
+    else:
+        claude_md.write_text(_MEMGRAM_SESSION_PROTOCOL.lstrip("\n"), encoding="utf-8")
+    click.echo("  Added memgram session protocol to CLAUDE.md")
 
 
 def _update_gitignore(project_root: str) -> None:
