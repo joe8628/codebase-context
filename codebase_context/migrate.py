@@ -72,7 +72,7 @@ def run_migration(project_root: str) -> tuple[int, int]:
     archived_handoff = root / "HANDOFF.md.migrated"
     archived_decisions = root / "DECISIONS.md.migrated"
 
-    if archived_handoff.exists() or archived_decisions.exists():
+    if archived_handoff.exists() and archived_decisions.exists():
         raise AlreadyMigratedError(
             "Migration has already been run — archive files (*.migrated) already exist."
         )

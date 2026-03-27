@@ -148,16 +148,20 @@ def test_run_migration_archives_both_files(tmp_path):
 
 def test_run_migration_raises_if_already_migrated(tmp_path):
     (tmp_path / "HANDOFF.md.migrated").write_text("old", encoding="utf-8")
-
-    with pytest.raises(AlreadyMigratedError):
-        run_migration(str(tmp_path))
-
-
-def test_run_migration_raises_if_decisions_archive_exists(tmp_path):
     (tmp_path / "DECISIONS.md.migrated").write_text("old", encoding="utf-8")
 
     with pytest.raises(AlreadyMigratedError):
         run_migration(str(tmp_path))
+
+
+def test_run_migration_does_not_raise_if_only_one_archive_exists(tmp_path):
+    (tmp_path / "DECISIONS.md.migrated").write_text("old", encoding="utf-8")
+    (tmp_path / ".claude").mkdir()
+
+    # Only decisions archive exists — handoff can still be migrated (returns zeros if no source)
+    handoff_count, decision_count = run_migration(str(tmp_path))
+    assert handoff_count == 0
+    assert decision_count == 0
 
 
 def test_run_migration_returns_zeros_when_nothing_to_migrate(tmp_path):
@@ -222,6 +226,7 @@ def test_cli_migrate_exits_0_and_prints_summary(tmp_path):
 
 def test_cli_migrate_exits_1_when_already_migrated(tmp_path):
     (tmp_path / "HANDOFF.md.migrated").write_text("old", encoding="utf-8")
+    (tmp_path / "DECISIONS.md.migrated").write_text("old", encoding="utf-8")
 
     runner = CliRunner()
     result = runner.invoke(cli, ["--root", str(tmp_path), "migrate"])
