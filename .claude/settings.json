@@ -1,0 +1,73 @@
+{
+  "mcpServers": {
+    "codebase-context": {
+      "command": "ccindex",
+      "args": [
+        "serve"
+      ]
+    },
+    "memgram": {
+      "command": "ccindex",
+      "args": [
+        "mem-serve"
+      ]
+    }
+  },
+  "permissions": {
+    "allow": [
+      "Read",
+      "Write",
+      "Bash"
+    ],
+    "deny": [
+      "Network"
+    ]
+  },
+  "tools": {
+    "bash": {
+      "allowedCommands": [
+        "git",
+        "python",
+        "python3",
+        "node",
+        "npm",
+        "npx",
+        "tsc",
+        "mypy",
+        "ruff",
+        "eslint",
+        "clang",
+        "clang++",
+        "make",
+        "cmake",
+        "pip",
+        "pip3",
+        "pip-audit",
+        "npm audit",
+        "ccindex"
+      ]
+    }
+  },
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/session-start.sh"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/session-end.sh"
+          }
+        ]
+      }
+    ]
+  }
+}
