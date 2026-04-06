@@ -3,20 +3,20 @@
 **Status**: READY
 **Complexity**: COMPLEX
 **Created**: 2026-04-06
-**Updated**: 2026-04-06 (Layer 2 revised: tools removed, binary detection retained)
+**Updated**: 2026-04-06 (merged: Layer 1 on-demand model, Layer 3 consolidation + tool renames, ccindex migrate expanded)
 
 ## Summary
 
 `codebase-context` (ccindex) is a locally-running agent context system organized in three
 complementary layers, each providing a distinct kind of awareness to Claude Code agents. Layer 1
-provides a static structural map and semantic vector search over parsed code symbols (tree-sitter →
-ChromaDB). Layer 2 performs LSP binary presence detection — checking for and optionally installing
+provides a structural map and semantic vector search over parsed code symbols (tree-sitter →
+ChromaDB); `repo_map.md` is served on-demand via `get_repo_map` rather than injected at session
+start. Layer 2 performs LSP binary presence detection — checking for and optionally installing
 language server binaries — but exposes no MCP tools of its own; navigation tools are the
 responsibility of first-party LSP MCP plugins. Layer 3 persists two kinds of agent memory:
-cross-session narrative observations (memgram, SQLite FTS5) and intra-session coordination state
-(tasks, events, change manifests, SQLite FTS5). All layers are served as MCP tools — Layer 1 and
-coordination state via `ccindex serve`, narrative memory via the separate `ccindex mem-serve`.
-Everything runs locally: no external services, no API keys, no Docker.
+cross-session narrative observations (memgram, standalone FTS5) and intra-session coordination state
+(tasks, events, change manifests, SQLite FTS5). All 11 MCP tools are served from a single
+`ccindex serve` process. Everything runs locally: no external services, no API keys, no Docker.
 
 ---
 
@@ -26,7 +26,7 @@ Everything runs locally: no external services, no API keys, no Docker.
 - **Product description evolves with the product**: no fixed description is locked in at concept
   stage. The README and one-liner will be updated as each layer stabilises.
 - **Layer 3 access modes are asymmetric by design**:
-  - 3a (memgram): proactive load at session start — every session calls `mem_context`
+  - 3a (memgram): proactive load at session start — every session calls `narrative_context`
   - 3b (memory_store): reactive/on-demand — only loaded when continuing an in-flight task
 - **All ccindex data is per-project, scoped to `.codebase-context/`**: no global or cross-project
   state. `memgram.db` moves from `.claude/` to `.codebase-context/` as part of MCP consolidation.
@@ -51,7 +51,7 @@ Everything runs locally: no external services, no API keys, no Docker.
   removed from scope because LSP provides it at higher semantic accuracy than tree-sitter string
   matching. This decision is documented in `docs/MEMORY_LAYER_SPEC.md`.
 - **Per-project isolation**: all data in `.codebase-context/` — `chroma/` (Layer 1), `memory.db`
-  (Layer 3b), and `memgram.db` (Layer 3a, in `.claude/`).
+  (Layer 3b), and `memgram.db` (Layer 3a). No `.claude/` data files.
 - **Zero new pip dependencies** for Layers 2 and 3: stdlib only (`subprocess`, `sqlite3`).
   Layer 1 carries the heavy deps (fastembed, chromadb, tree-sitter grammars).
 - **Single `ccindex serve` entry confirmed**: all 11 tools (3 Layer 1 + 0 Layer 2 + 4 Layer 3b +
@@ -59,6 +59,19 @@ Everything runs locally: no external services, no API keys, no Docker.
   `.claude/settings.json`. `ccindex mem-serve` becomes deprecated. Memgram's standalone
   portability is a future concern — if needed, a separate standalone version can be extracted
   later, but it is not a current requirement.
+- **Layer 3 MCP tool names resolved** — all 8 Layer 3 tools renamed to semantic group prefixes:
+  `narrative_save`, `narrative_context`, `narrative_search`, `narrative_session_end` (Layer 3a);
+  `coord_store_event`, `coord_recall_events`, `coord_record_manifest`, `coord_get_manifest` (Layer 3b).
+  Old `mem_*` and `store_memory`/`recall_memory` names are replaced everywhere.
+- **`ccindex upgrade` owns settings and schema upgrades (permanent)**: removes the stale `memgram`
+  MCP entry from `.claude/settings.json`; applies all schema changes for the current version. Safe
+  to re-run. The ongoing upgrade path for every future release.
+- **`ccindex migrate` expanded scope (bridge, eventually deprecated)**: handles the one-time
+  migration for old file-based agent memory (HANDOFF.md/DECISIONS.md → memory store) AND
+  moves `.claude/memgram.db` → `.codebase-context/memgram.db` with schema transformation
+  (content-backed FTS + triggers → standalone FTS5, Unix INTEGER timestamps). Start fresh —
+  existing narrative history is not preserved. `ccindex serve` refuses to start on old schema
+  and directs the user to run `ccindex migrate`.
 - **Index freshness model is solved**: `ccindex update` is a user-invoked command outside sessions.
   During agent sessions, git hooks trigger `ccindex update` automatically. Agents never call
   `ccindex update` explicitly mid-session. Layer 1 freshness is the hook's responsibility.
@@ -79,9 +92,9 @@ Everything runs locally: no external services, no API keys, no Docker.
   current 3-layer architecture. Sync/update strategy is out of scope here but should be an open
   question for the architect. — *Deferred: out of scope for this concept.*
 
-- [DEFERRED] **`ccindex serve` tool count is growing (12 tools)**: As layers accumulate, the single
+- [DEFERRED] **`ccindex serve` tool count is growing (11 tools)**: As layers accumulate, the single
   MCP server entry point becomes a broad namespace. No concrete problem yet, but an agent receiving
-  12 tools in a session needs good tool descriptions to route correctly. Tool description quality
+  11 tools in a session needs good tool descriptions to route correctly. Tool description quality
   has not been formally audited. — *Deferred: no functional gap, documentation concern.*
 
 - [DEFERRED] **Layer 3b `store_memory`/`recall_memory` vs Layer 3a `mem_save`/`mem_search` are
@@ -124,8 +137,11 @@ Everything runs locally: no external services, no API keys, no Docker.
 **Status**: READY
 - parser.py → chunker.py → embedder.py → store.py → repo_map.py → indexer.py → retriever.py
 - MCP tools: search_codebase, get_symbol, get_repo_map
-- Static output: repo_map.md injected into every session via CLAUDE.md @-reference
+- Static output: repo_map.md on disk, served on-demand via `get_repo_map`; `@`-reference removed
+  from `CLAUDE.md` — agents call `get_repo_map` only when a full structural overview is needed
 - Dynamic output: ANN semantic search (cosine, 768-dim Jina embeddings)
+- Navigation priority: `search_codebase`/`get_symbol` (targeted) → `get_repo_map` (full overview)
+  → `Grep`/`Glob` (content/filename patterns) → `Read` (after locating the right file)
 
 ### Layer 2 — LSP Binary Detection
 **Status**: READY (scope narrowed — tools removed, binary detection retained)
@@ -146,22 +162,24 @@ Everything runs locally: no external services, no API keys, no Docker.
 
 ### Layer 3a — Narrative Memory (memgram)
 **Status**: READY
-- memgram/store.py (MemgramStore: observations FTS5) → memgram/mcp_server.py
-- MCP tools: mem_save, mem_context, mem_search, mem_session_end
-- Will be folded into `ccindex serve` (consolidation); `ccindex mem-serve` deprecated
-- Data file moves: `.claude/memgram.db` → `.codebase-context/memgram.db` (per-project)
-- Cross-session: agents save at session end, load at session start via `mem_context`
+- memgram/store.py (MemgramStore: standalone FTS5, db.py threading.local connection) → mcp_server.py
+- MCP tools: narrative_save, narrative_context, narrative_search, narrative_session_end
+- Folded into `ccindex serve` (consolidation); `ccindex mem-serve` deprecated
+- Data file: `.codebase-context/memgram.db` (per-project)
+- Cross-session: agents save at session end, load at session start via `narrative_context`
 - Session protocol documented in `CLAUDE.md`; asymmetric from Layer 3b (proactive vs reactive)
+- Type enum: VALID_OBSERVATION_TYPES = {handoff, decision, bugfix, architecture, discovery, session_end}
 
 ### Layer 3b — Coordination State (memory_store)
 **Status**: READY
 - db.py (threading.local WAL connection) → memory_store.py (events FTS5 + tasks + change_manifests)
-- MCP tools: store_memory, recall_memory, record_change_manifest, get_change_manifest
+- MCP tools: coord_store_event, coord_recall_events, coord_record_manifest, coord_get_manifest
 - Integrated into main ccindex serve
 - Data file: `.codebase-context/memory.db`
 - Intra-session: task lifecycle tracking and change manifest handoff between dev/review agents
 - **Access mode confirmed**: on-demand / task-continuation only. Agents load coordination state
   only when explicitly continuing an in-flight task. Not loaded at session start.
+- Type enum: VALID_EVENT_TYPES = {task_started, task_completed, task_failed, agent_action, decision, error}
 - Agent-to-tool contract is documented in `docs/MEMORY_LAYER_SPEC.md` — deferred to architect
   to surface in agent system prompts.
 
@@ -171,8 +189,8 @@ Everything runs locally: no external services, no API keys, no Docker.
 
 **Concept summary**: `codebase-context` (ccindex) is a locally-running, per-project agent context
 system built in three layers served from a single `ccindex serve` MCP entry point. Layer 1 provides
-a static repo map (tree-sitter → repo_map.md, injected via CLAUDE.md) and semantic vector search
-(ChromaDB) via 3 MCP tools. Layer 2 performs LSP binary presence detection only — checking for
+a structural map (tree-sitter → repo_map.md, served on-demand via `get_repo_map`) and semantic
+vector search (ChromaDB) via 3 MCP tools. Layer 2 performs LSP binary presence detection only — checking for
 and optionally installing language server binaries during `ccindex init` and `ccindex doctor`;
 it exposes no MCP tools and delegates all navigation capabilities to first-party LSP MCP plugins.
 Layer 3 provides two complementary agent memory stores, both scoped to `.codebase-context/`: narrative
@@ -185,8 +203,11 @@ is per-project; no global or cross-project state exists. Total: 11 MCP tools.
 - Single `ccindex serve` MCP entry — 11 tools from one process (3 Layer 1 + 4 Layer 3b + 4 Layer 3a)
 - Layer 2 exposes zero MCP tools — binary detection only, no navigation surface
 - `ccindex mem-serve` must be deprecated; memgram folded into the main server
+- All 8 Layer 3 MCP tool names changed — `CLAUDE.md` and all agent session protocols must
+  reference the `narrative_*` and `coord_*` prefixed names; old `mem_*` and generic names removed
 - `ccindex init` and `ccindex doctor` must be updated to register only `ccindex serve`
-- `memgram.db` moves from `.claude/` to `.codebase-context/` as part of consolidation
+- `memgram.db` lives in `.codebase-context/`; `ccindex migrate` handles the one-time file move
+  and schema transform for existing projects
 - Zero new pip dependencies — consolidation uses only existing deps
 - All existing tests must remain green throughout any consolidation work
 
@@ -195,6 +216,11 @@ is per-project; no global or cross-project state exists. Total: 11 MCP tools.
 - Layer 3 asymmetric access: memgram proactively loaded at session start; memory_store
   loaded on-demand only when explicitly continuing an in-flight task
 - Index freshness via hooks — agents never call `ccindex update` mid-session
+- Navigation priority: `search_codebase`/`get_symbol` (targeted) → `get_repo_map` (full overview
+  only) → `Grep`/`Glob` (patterns) → `Read`; repo_map 8k token cost is opt-in, not unconditional
+- Layer 3 tool prefixes: `narrative_*` for cross-session observations, `coord_*` for intra-session
+  coordination state — prefix is the structural signal agents use to route between sub-layers
+- `ccindex upgrade` handles settings cleanup permanently; `ccindex migrate` is a one-time bridge
 - Product description evolves with the product — no fixed description locked in at concept stage
 
 **Discarded alternatives**:
@@ -207,20 +233,22 @@ is per-project; no global or cross-project state exists. Total: 11 MCP tools.
   removed to reduce namespace noise and token cost
 
 **Blocked (deferred)**:
-- Single vs dual DB file (`memory.db` + `memgram.db` vs merged `context.db`) — schema migration
-  complexity and WAL concurrency behaviour are the deciding factors; architect's call
 - payload-depot submodule sync to 3-layer version — out of scope for this concept
 - Tool description quality audit (11 tools in one namespace) — documentation concern, not blocker
 - Environments without any LSP MCP plugins lose `find_references` and `get_call_hierarchy` with
   no equivalent — accepted trade-off given the target deployment always includes LSP plugins
 
 **Open questions for the architect**:
-- Should `memory.db` and `memgram.db` merge into a single `context.db` in `.codebase-context/`,
-  or remain as two separate SQLite files with distinct schemas?
-- What is the migration path for existing projects that have `memgram.db` in `.claude/`?
-- Should `ccindex init` write a single `settings.json` entry for `ccindex serve` and remove
-  any existing `memgram` entry, or only add if absent?
-- How should the 11-tool namespace be documented so agents can route correctly between layers?
+- ~~Should `memory.db` and `memgram.db` merge into a single `context.db`?~~ — RESOLVED: two
+  separate files, one `ccindex serve` process, no schema unification.
+- ~~What is the migration path for existing projects with `memgram.db` in `.claude/`?~~ —
+  RESOLVED: `ccindex migrate` handles file move + schema transform (start fresh); `ccindex upgrade`
+  removes the stale `memgram` MCP entry from `.claude/settings.json`.
+- ~~Should `ccindex init` remove any existing `memgram` entry or only add if absent?~~ —
+  RESOLVED: `ccindex upgrade` owns settings cleanup; `ccindex init` adds `ccindex serve` only
+  if absent.
+- How should the 11-tool namespace (`narrative_*` vs `coord_*`) be documented so agents can route
+  correctly? Tool description quality across all 11 tools has not been formally audited.
 - Should the `lsp/` package (router.py, handlers.py, client.py, filters.py, positions.py) be
-  removed entirely, kept as dormant code, or kept because the binary-detection logic depends on it?
+  removed entirely, kept as dormant code, or kept because binary-detection logic depends on it?
   (The binary checks in `ccindex init` likely only need `shutil.which` — not the full LspClient.)
