@@ -1,13 +1,14 @@
 """Unit tests for MemgramStore."""
 from __future__ import annotations
 
+import time
 import pytest
-from codebase_context.memgram.store import MemgramStore
+from codebase_context.memgram.store import MemgramStore, VALID_OBSERVATION_TYPES
 
 
 @pytest.fixture()
 def store(tmp_path):
-    return MemgramStore(str(tmp_path / "memgram.db"))
+    return MemgramStore(str(tmp_path))
 
 
 def test_save_returns_id(store):
@@ -22,9 +23,36 @@ def test_save_increments_id(store):
     assert id2 > id1
 
 
+def test_save_rejects_unknown_type(store):
+    with pytest.raises(ValueError, match="Unknown type"):
+        store.save("Title", "Content", "invalid_type")
+
+
+def test_valid_observation_types_contains_expected():
+    assert "handoff" in VALID_OBSERVATION_TYPES
+    assert "decision" in VALID_OBSERVATION_TYPES
+    assert "bugfix" in VALID_OBSERVATION_TYPES
+    assert "architecture" in VALID_OBSERVATION_TYPES
+    assert "discovery" in VALID_OBSERVATION_TYPES
+    assert "session_end" in VALID_OBSERVATION_TYPES
+
+
+def test_created_at_is_unix_integer(store):
+    before = int(time.time())
+    store.save("Test", "Content", "handoff")
+    after = int(time.time())
+    result = store.context()[0]
+    assert isinstance(result["created_at"], int)
+    assert before <= result["created_at"] <= after
+
+
+def test_db_file_in_codebase_context_dir(tmp_path):
+    MemgramStore(str(tmp_path))
+    assert (tmp_path / ".codebase-context" / "memgram.db").exists()
+
+
 def test_context_empty_on_fresh_db(store):
-    results = store.context()
-    assert results == []
+    assert store.context() == []
 
 
 def test_context_returns_saved_memories(store):
@@ -32,7 +60,6 @@ def test_context_returns_saved_memories(store):
     store.save("Beta", "detail B", "decision")
     results = store.context()
     assert len(results) == 2
-    # Most recent first
     assert results[0]["title"] == "Beta"
     assert results[1]["title"] == "Alpha"
 
@@ -40,18 +67,14 @@ def test_context_returns_saved_memories(store):
 def test_context_respects_limit(store):
     for i in range(15):
         store.save(f"Memory {i}", "content", "handoff")
-    results = store.context(limit=5)
-    assert len(results) == 5
+    assert len(store.context(limit=5)) == 5
 
 
 def test_context_result_has_required_fields(store):
     store.save("Test title", "Test content", "discovery")
     result = store.context()[0]
-    assert "id" in result
-    assert "title" in result
-    assert "content" in result
-    assert "type" in result
-    assert "created_at" in result
+    for field in ("id", "title", "content", "type", "created_at"):
+        assert field in result
 
 
 def test_search_finds_by_title(store):
@@ -60,6 +83,7 @@ def test_search_finds_by_title(store):
     results = store.search("Authentication")
     assert len(results) == 1
     assert results[0]["title"] == "Authentication refactor"
+    assert "id" in results[0]
 
 
 def test_search_finds_by_content(store):
@@ -79,8 +103,7 @@ def test_search_with_type_filter(store):
 
 def test_search_empty_when_no_match(store):
     store.save("Something", "unrelated", "handoff")
-    results = store.search("xyzzy_no_match")
-    assert results == []
+    assert store.search("xyzzy_no_match") == []
 
 
 def test_session_end_saves_observation(store):
