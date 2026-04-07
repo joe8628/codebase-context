@@ -1,13 +1,6 @@
-"""
-Verify the 5 LSP tools are registered in mcp_server and dispatch correctly.
-"""
+"""Verify LSP tools are NOT registered in mcp_server (Layer 2 scope narrowed)."""
 import inspect
-import json
-import pytest
-from unittest.mock import MagicMock
-
 import codebase_context.mcp_server as mcp_server_mod
-
 
 LSP_TOOL_NAMES = [
     "find_definition",
@@ -18,29 +11,13 @@ LSP_TOOL_NAMES = [
 ]
 
 
-def test_all_lsp_tool_names_present_in_source():
+def test_lsp_tools_absent_from_list_tools():
     src = inspect.getsource(mcp_server_mod)
     for name in LSP_TOOL_NAMES:
-        assert f'"{name}"' in src, f'Tool name "{name}" not found in mcp_server source'
+        assert f'name="{name}"' not in src, \
+            f'LSP tool "{name}" still registered in mcp_server — should be removed'
 
 
-def test_lsp_handler_imports_present_in_source():
+def test_lsp_router_not_instantiated_in_run_server():
     src = inspect.getsource(mcp_server_mod)
-    assert "LspRouter" in src
-    assert "handle_find_definition" in src
-
-
-async def test_handle_lsp_tool_returns_text_content():
-    from codebase_context.lsp.router import ServerUnavailableError
-
-    router = MagicMock()
-    router.get_client.side_effect = ServerUnavailableError("python", "pyright-langserver")
-
-    result = await mcp_server_mod._handle_lsp_tool(
-        "find_definition", router,
-        {"file": "/tmp/x.py", "line": 0, "character": 0},
-        "/tmp",
-    )
-    assert len(result) == 1
-    payload = json.loads(result[0].text)
-    assert payload["error"] == "server_unavailable"
+    assert "LspRouter(project_root)" not in src

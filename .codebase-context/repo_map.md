@@ -1,5 +1,5 @@
 # Repo Map
-# Generated: 2026-03-27T21:44:49  |  Files: 50  |  Symbols: 426
+# Generated: 2026-04-07T13:52:44  |  Files: 50  |  Symbols: 452
 # Reference this in CLAUDE.md with: @.codebase-context/repo_map.md
 
 ---
@@ -20,7 +20,7 @@
   + _parse_version(v: str) -> tuple[int, ...]:
 
 ## codebase_context/db.py
-  + get_connection(project_root: str) -> sqlite3.Connection:
+  + get_connection(project_root: str, db_filename: str = "memory.db") -> sqlite3.Connection:
 
 ## codebase_context/embedder.py
   class Embedder:
@@ -43,16 +43,21 @@
 
 ## codebase_context/mcp_server.py
   + _setup_logging(project_root: str) -> None:
+  + _check_old_memgram_schema(project_root: str) -> None:
   + run_server() -> None:
   + _run_server(server) -> None:
   + _handle_search(retriever, arguments: dict):
   + _handle_get_symbol(retriever, arguments: dict):
   + _handle_get_repo_map(retriever, project_root: str):
-  + _handle_store_memory(memory_store, arguments: dict):
-  + _handle_recall_memory(memory_store, arguments: dict):
-  + _handle_record_change_manifest(memory_store, arguments: dict):
-  + _handle_get_change_manifest(memory_store, arguments: dict):
-  + _handle_lsp_tool(
+  + _format_memories(memories: list[dict]) -> str:
+  + _handle_narrative_save(narrative_store, arguments: dict):
+  + _handle_narrative_context(narrative_store, arguments: dict):
+  + _handle_narrative_search(narrative_store, arguments: dict):
+  + _handle_narrative_session_end(narrative_store, arguments: dict):
+  + _handle_coord_store_event(memory_store, arguments: dict):
+  + _handle_coord_recall_events(memory_store, arguments: dict):
+  + _handle_coord_record_manifest(memory_store, arguments: dict):
+  + _handle_coord_get_manifest(memory_store, arguments: dict):
 
 ## codebase_context/memory_store.py
   class MemoryStore:
@@ -215,6 +220,11 @@
   + test_db_file_created_at_expected_path(tmp_path):
   + test_wal_mode_enabled(tmp_path):
   + test_different_threads_get_different_connections(tmp_path):
+  + test_db_filename_creates_named_db_file(tmp_path):
+  + test_different_filenames_return_different_connections(tmp_path):
+  + test_same_filename_same_thread_returns_cached_connection(tmp_path):
+  + test_default_filename_is_memory_db(tmp_path):
+  + test_different_project_roots_return_different_connections(tmp_path, tmp_path_factory):
 
 ## tests/test_embedder.py
   + _make_local_model(base: Path, folder_name: str) -> Path:
@@ -301,20 +311,30 @@
   + test_custom_cmds_override_defaults():
 
 ## tests/test_mcp_lsp_tools.py
-  + test_all_lsp_tool_names_present_in_source():
-  + test_lsp_handler_imports_present_in_source():
-  + test_handle_lsp_tool_returns_text_content():
+  + test_lsp_tools_absent_from_list_tools():
+  + test_lsp_router_not_instantiated_in_run_server():
 
 ## tests/test_mcp_memory_tools.py
-  + test_memory_tool_names_present_in_source():
-  + test_handle_store_memory_returns_id(tmp_path):
-  + test_handle_recall_memory_returns_events(tmp_path):
-  + test_handle_record_change_manifest_returns_count(tmp_path):
-  + test_handle_get_change_manifest_returns_records(tmp_path):
+  + test_narrative_tool_names_in_source():
+  + test_coord_tool_names_in_source():
+  + test_old_tool_names_absent_from_source():
+  + test_handle_narrative_save_returns_id(tmp_path):
+  + test_handle_narrative_context_returns_formatted(tmp_path):
+  + test_handle_narrative_context_empty(tmp_path):
+  + test_handle_narrative_search_returns_results(tmp_path):
+  + test_handle_narrative_session_end_returns_success(tmp_path):
+  + test_handle_coord_store_event_returns_id(tmp_path):
+  + test_handle_coord_recall_events_returns_list(tmp_path):
+  + test_handle_coord_record_manifest_returns_count(tmp_path):
+  + test_handle_coord_get_manifest_returns_records(tmp_path):
 
 ## tests/test_memgram_store.py
   + test_save_returns_id(store):
   + test_save_increments_id(store):
+  + test_save_rejects_unknown_type(store):
+  + test_valid_observation_types_contains_expected():
+  + test_created_at_is_unix_integer(store):
+  + test_db_file_in_codebase_context_dir(tmp_path):
   + test_context_empty_on_fresh_db(store):
   + test_context_returns_saved_memories(store):
   + test_context_respects_limit(store):
@@ -346,6 +366,8 @@
   + test_get_manifest_empty_for_unknown_task(store):
   + test_get_manifest_scoped_to_task(store):
   + test_manifest_record_has_required_fields(store):
+  + test_valid_event_types_constant_exists():
+  + test_store_event_rejects_unknown_type(store):
 
 ## tests/test_migrate.py
   + test_parse_handoff_blocks_extracts_one_real_block():
@@ -371,6 +393,9 @@
   + test_cli_migrate_exits_1_when_already_migrated(tmp_path):
   + test_cli_migrate_nothing_to_migrate(tmp_path):
   + test_cli_migrate_prints_both_counts(tmp_path):
+  + test_run_migration_archives_old_memgram_db(tmp_path):
+  + test_run_migration_writes_to_codebase_context_memgram_db(tmp_path):
+  + test_run_migration_no_error_when_no_old_memgram_db(tmp_path):
 
 ## tests/test_parser.py
   + test_parse_python_class_and_methods():
@@ -478,7 +503,8 @@
 
 ## codebase_context/memgram/store.py
   class MemgramStore:
-    + __init__(self, db_path: str) -> None:
+    + __init__(self, project_root: str) -> None:
+    + _conn(self):
     + save(self, title: str, content: str, type: str = "handoff") -> int:
     + context(self, limit: int = 10) -> list[dict]:
     + search(self, query: str, type: str | None = None, limit: int = 10) -> list[dict]:
