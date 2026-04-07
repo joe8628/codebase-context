@@ -57,26 +57,6 @@ def init(ctx: click.Context) -> None:
 
     _update_gitignore(root)
 
-    # Prompt to add repo map to CLAUDE.md
-    claude_md = Path(root) / "CLAUDE.md"
-    ref_line = "@.codebase-context/repo_map.md"
-    if claude_md.exists():
-        has_ref = ref_line in claude_md.read_text(encoding="utf-8")
-    else:
-        has_ref = False
-
-    if not has_ref:
-        if click.confirm("\nAdd repo map reference to CLAUDE.md?", default=True):
-            if claude_md.exists():
-                claude_md.write_text(
-                    claude_md.read_text(encoding="utf-8").rstrip("\n")
-                    + f"\n\n{ref_line}\n",
-                    encoding="utf-8",
-                )
-            else:
-                claude_md.write_text(f"{ref_line}\n", encoding="utf-8")
-            click.echo(f"  Added {ref_line} to CLAUDE.md")
-
     if click.confirm("\nInstall git post-commit hook for auto-reindexing?", default=True):
         from codebase_context.watcher import install_git_hook
         install_git_hook(root)
@@ -92,9 +72,9 @@ def init(ctx: click.Context) -> None:
 @cli.command()
 @click.pass_context
 def doctor(ctx: click.Context) -> None:
-    """Check binaries and MCP setup; registers memgram if missing."""
+    """Check binaries and MCP setup."""
     _setup_external_deps()
-    _setup_memgram(ctx.obj["root"])
+    _setup_mcp_server(ctx.obj["root"])
 
 
 @cli.command()
@@ -248,8 +228,9 @@ def clear(ctx: click.Context, confirm: bool) -> None:
 
 
 @cli.command()
+@click.pass_context
 @click.option("--debug", is_flag=True, help="Print install-method detection details.")
-def upgrade(debug: bool) -> None:
+def upgrade(ctx: click.Context, debug: bool) -> None:
     """Upgrade codebase-context to the latest version from GitHub."""
     github_url = "git+https://github.com/joe8628/codebase-context"
 
@@ -307,6 +288,7 @@ def upgrade(debug: bool) -> None:
     result = subprocess.run(cmd)
     if result.returncode == 0:
         click.echo("✓ codebase-context upgraded successfully")
+        _remove_stale_mcp_entries(ctx.obj["root"])
     else:
         click.echo("✗ Upgrade failed. Run with --debug to see detection details.", err=True)
         click.echo("  Manual options:", err=True)
@@ -341,7 +323,13 @@ def serve(ctx: click.Context) -> None:
 
 @cli.command("mem-serve")
 def mem_serve() -> None:
-    """Start memgram memory MCP server (used by Claude Code)."""
+    """[DEPRECATED] memgram is now part of ccindex serve. Use ccindex serve instead."""
+    click.echo(
+        "Warning: ccindex mem-serve is deprecated. "
+        "Memgram tools are now served by ccindex serve.\n"
+        "Run: ccindex upgrade  to clean up your project settings.",
+        err=True,
+    )
     from codebase_context.memgram.mcp_server import run_server
     run_server()
 
@@ -366,28 +354,28 @@ _MCP_ENTRY = {"command": "ccindex", "args": ["serve"], "type": "stdio"}
 _MCP_KEY = "codebase-context"
 _MEMGRAM_KEY = "memgram"
 
-_MEMGRAM_PROTOCOL_SENTINEL = "mem_context"
+_MEMGRAM_PROTOCOL_SENTINEL = "narrative_context"
 _MEMGRAM_SESSION_PROTOCOL = """
 ## Session Protocol
 
 **At the start of every session:**
 1. Run `git pull`.
-2. Call `mem_context` (memgram MCP) to load prior memories for this project.
+2. Call `narrative_context` (ccindex MCP) to load prior memories for this project.
 3. Read `CONVENTIONS.md`.
 
 **During every session:**
-- After each significant finding, bugfix, or decision: call `mem_save`:
+- After each significant finding, bugfix, or decision: call `narrative_save`:
   - `title`: verb + what (e.g. "Fixed N+1 query in UserList")
   - `type`: `handoff` | `decision` | `bugfix` | `architecture` | `discovery`
   - `content`: freeform with ## What / ## Why / ## Where / ## Learned sections
 
 **After every completed feature or fix:**
-1. Call `mem_save` summarising what was completed (`type: handoff`).
-2. Call `mem_session_end` with a one-line summary.
+1. Call `narrative_save` summarising what was completed (`type: handoff`).
+2. Call `narrative_session_end` with a one-line summary.
 3. Commit and push code only: `git add <changed files> && git commit && git push`
 
 > Do not write to HANDOFF.md or DECISIONS.md — they are removed.
-> Query past decisions with: `mem_search(query="<topic>", type="decision")`
+> Query past decisions with: `narrative_search(query="<topic>", type="decision")`
 """
 
 # (binary, label, method, install_arg, fallback_url)
@@ -625,6 +613,23 @@ def _setup_mcp_server(project_root: str) -> None:
         click.echo("  Added MCP server to .claude/settings.json")
 
 
+def _remove_stale_mcp_entries(project_root: str) -> None:
+    """Remove the stale 'memgram' MCP entry from .claude/settings.json if present."""
+    settings_path = Path(project_root) / ".claude" / "settings.json"
+    if not settings_path.exists():
+        return
+    try:
+        data = json.loads(settings_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return
+    servers = data.get("mcpServers", {})
+    if _MEMGRAM_KEY in servers:
+        del servers[_MEMGRAM_KEY]
+        data["mcpServers"] = servers
+        settings_path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+        click.echo(f"  Removed stale '{_MEMGRAM_KEY}' MCP entry from .claude/settings.json")
+
+
 def _setup_memgram(project_root: str) -> None:
     """Register memgram memory MCP in .claude/settings.json."""
     settings_path = Path(project_root) / ".claude" / "settings.json"
@@ -680,9 +685,10 @@ def _update_gitignore(project_root: str) -> None:
         ".codebase-context/chroma/",
         ".codebase-context/index_meta.json",
         ".codebase-context/mcp.log",
+        ".codebase-context/memgram.db",
+        ".codebase-context/memory.db",
         "# optionally commit repo_map.md for team visibility:",
         "# .codebase-context/repo_map.md",
-        ".claude/memgram.db",
     ]
 
     if gitignore_path.exists():
