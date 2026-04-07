@@ -7,6 +7,12 @@ import time
 from codebase_context.db import get_connection
 
 
+VALID_EVENT_TYPES = {
+    "task_started", "task_completed", "task_failed",
+    "agent_action", "decision", "error",
+    "handoff",
+}
+
 _SCHEMA = """
 CREATE VIRTUAL TABLE IF NOT EXISTS events USING fts5(
   agent,
@@ -58,6 +64,10 @@ class MemoryStore:
         task_id: str | None = None,
     ) -> str:
         """Insert a session event. Returns the row ID as a string."""
+        if event_type not in VALID_EVENT_TYPES:
+            raise ValueError(
+                f"Unknown event_type {event_type!r}. Valid: {sorted(VALID_EVENT_TYPES)}"
+            )
         cur = self._conn.execute(
             "INSERT INTO events(agent, event_type, content, task_id, created_at) VALUES (?,?,?,?,?)",
             # FTS5 columns must be TEXT; None is stored as "" since NULL is not supported

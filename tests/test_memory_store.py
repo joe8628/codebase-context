@@ -180,3 +180,18 @@ def test_manifest_record_has_required_fields(store):
     assert "change_type" in record
     assert "old_signature" in record
     assert "new_signature" in record
+
+
+def test_valid_event_types_constant_exists():
+    from codebase_context.memory_store import VALID_EVENT_TYPES
+    assert "task_started" in VALID_EVENT_TYPES
+    assert "task_completed" in VALID_EVENT_TYPES
+    assert "task_failed" in VALID_EVENT_TYPES
+    assert "agent_action" in VALID_EVENT_TYPES
+    assert "decision" in VALID_EVENT_TYPES
+    assert "error" in VALID_EVENT_TYPES
+
+
+def test_store_event_rejects_unknown_type(store):
+    with pytest.raises(ValueError, match="Unknown event_type"):
+        store.store_event("planner", "invalid_type", "some content")
