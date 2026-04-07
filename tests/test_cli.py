@@ -10,7 +10,7 @@ import click
 import pytest
 from click.testing import CliRunner
 
-from codebase_context.cli import cli, _setup_memgram, _setup_external_deps
+from codebase_context.cli import cli, _setup_external_deps
 
 
 @click.command()
@@ -44,7 +44,7 @@ class TestSetupMcpServer:
         result = runner.invoke(
             cli,
             ["--root", str(tmp_project), "init"],
-            input="n\nn\ny\nn\n",  # skip CLAUDE.md, skip git hook, accept MCP, decline memgram
+            input="n\ny\nn\n",  # skip git hook, accept MCP, decline memgram
             catch_exceptions=False,
         )
         settings = tmp_project / ".claude" / "settings.json"
@@ -64,7 +64,7 @@ class TestSetupMcpServer:
         runner.invoke(
             cli,
             ["--root", str(tmp_project), "init"],
-            input="n\nn\ny\nn\n",
+            input="n\ny\nn\n",
             catch_exceptions=False,
         )
         data = json.loads((claude_dir / "settings.json").read_text())
@@ -88,7 +88,7 @@ class TestSetupMcpServer:
         result = runner.invoke(
             cli,
             ["--root", str(tmp_project), "init"],
-            input="n\nn\nn\n",  # CLAUDE.md=n, hook=n (MCP skips), memgram=n
+            input="n\nn\n",  # hook=n (MCP skips), memgram=n
             catch_exceptions=False,
         )
         # The MCP prompt should NOT appear
@@ -99,7 +99,7 @@ class TestSetupMcpServer:
         result = runner.invoke(
             cli,
             ["--root", str(tmp_project), "init"],
-            input="n\nn\ny\nn\n",
+            input="n\ny\nn\n",
             catch_exceptions=False,
         )
         assert "Added MCP server to .claude/settings.json" in result.output
@@ -109,7 +109,7 @@ class TestSetupMcpServer:
         result = runner.invoke(
             cli,
             ["--root", str(tmp_project), "init"],
-            input="n\nn\nn\nn\n",  # decline all four prompts
+            input="n\nn\nn\n",  # decline all three prompts
             catch_exceptions=False,
         )
         settings = tmp_project / ".claude" / "settings.json"
@@ -125,7 +125,7 @@ class TestSetupMcpServer:
         runner.invoke(
             cli,
             ["--root", str(tmp_project), "init"],
-            input="n\nn\ny\nn\n",
+            input="n\ny\nn\n",
             catch_exceptions=False,
         )
         data = json.loads((claude_dir / "settings.json").read_text())
@@ -158,7 +158,7 @@ class TestSetupMemgram:
         runner.invoke(
             cli,
             ["--root", str(tmp_project), "init"],
-            input="n\nn\nn\ny\n",  # CLAUDE.md=n, hook=n, MCP=n, memgram=y
+            input="n\nn\ny\n",  # hook=n, MCP=n, memgram=y
             catch_exceptions=False,
         )
         settings = tmp_project / ".claude" / "settings.json"
@@ -172,7 +172,7 @@ class TestSetupMemgram:
         runner.invoke(
             cli,
             ["--root", str(tmp_project), "init"],
-            input="n\nn\nn\ny\n",
+            input="n\nn\ny\n",
             catch_exceptions=False,
         )
         settings = tmp_project / ".claude" / "settings.json"
@@ -192,7 +192,7 @@ class TestSetupMemgram:
         result = runner.invoke(
             cli,
             ["--root", str(tmp_project), "init"],
-            input="n\nn\nn\n",  # CLAUDE.md=n, hook=n, MCP=n (memgram skips)
+            input="n\nn\n",  # hook=n, MCP=n (memgram skips)
             catch_exceptions=False,
         )
         assert "Register memgram" not in result.output
@@ -204,12 +204,26 @@ class TestSetupMemgram:
         runner.invoke(
             cli,
             ["--root", str(tmp_project), "init"],
-            input="n\nn\nn\nn\n",  # CLAUDE.md=n, hook=n, MCP=n, memgram=n
+            input="n\nn\nn\n",  # hook=n, MCP=n, memgram=n
             catch_exceptions=False,
         )
         settings = tmp_project / ".claude" / "settings.json"
         if settings.exists():
             data = json.loads(settings.read_text())
+            assert "memgram" not in data.get("mcpServers", {})
+
+    def test_init_does_not_register_separate_memgram_server(self, tmp_project):
+        """After init, settings.json should NOT have a 'memgram' MCP entry."""
+        runner = CliRunner()
+        runner.invoke(
+            cli,
+            ["--root", str(tmp_project), "init"],
+            input="n\ny\nn\n",  # hook=n, MCP=y, memgram=n
+            catch_exceptions=False,
+        )
+        settings_path = Path(tmp_project) / ".claude" / "settings.json"
+        if settings_path.exists():
+            data = json.loads(settings_path.read_text())
             assert "memgram" not in data.get("mcpServers", {})
 
 
@@ -255,25 +269,25 @@ class TestSetupExternalDeps:
 # ---------------------------------------------------------------------------
 
 class TestDoctorMemgram:
-    def test_doctor_registers_memgram_when_missing(self, tmp_project):
+    def test_doctor_registers_mcp_server_when_missing(self, tmp_project):
         runner = CliRunner()
         with patch("codebase_context.cli._setup_external_deps"):
             result = runner.invoke(
                 cli,
                 ["--root", str(tmp_project), "doctor"],
-                input="y\n",  # accept memgram registration
+                input="y\n",  # accept MCP registration
                 catch_exceptions=False,
             )
         settings = tmp_project / ".claude" / "settings.json"
         assert settings.exists(), result.output
         data = json.loads(settings.read_text())
-        assert data["mcpServers"]["memgram"]["command"] == "ccindex"
-        assert data["mcpServers"]["memgram"]["args"] == ["mem-serve"]
+        assert data["mcpServers"]["codebase-context"]["command"] == "ccindex"
+        assert data["mcpServers"]["codebase-context"]["args"] == ["serve"]
 
-    def test_doctor_skips_memgram_when_already_present(self, tmp_project):
+    def test_doctor_skips_mcp_server_when_already_present(self, tmp_project):
         claude_dir = tmp_project / ".claude"
         claude_dir.mkdir()
-        existing = {"mcpServers": {"memgram": {"command": "ccindex", "args": ["mem-serve"]}}}
+        existing = {"mcpServers": {"codebase-context": {"command": "ccindex", "args": ["serve"]}}}
         (claude_dir / "settings.json").write_text(json.dumps(existing))
 
         runner = CliRunner()
@@ -283,9 +297,9 @@ class TestDoctorMemgram:
                 ["--root", str(tmp_project), "doctor"],
                 catch_exceptions=False,
             )
-        assert "Register memgram" not in result.output
+        assert "Add MCP server" not in result.output
 
-    def test_doctor_skips_memgram_when_user_declines(self, tmp_project):
+    def test_doctor_skips_mcp_server_when_user_declines(self, tmp_project):
         runner = CliRunner()
         with patch("codebase_context.cli._setup_external_deps"):
             runner.invoke(
@@ -297,4 +311,60 @@ class TestDoctorMemgram:
         settings = tmp_project / ".claude" / "settings.json"
         if settings.exists():
             data = json.loads(settings.read_text())
-            assert "memgram" not in data.get("mcpServers", {})
+            assert "codebase-context" not in data.get("mcpServers", {})
+
+
+# ---------------------------------------------------------------------------
+# _remove_stale_mcp_entries unit tests
+# ---------------------------------------------------------------------------
+
+class TestUpgradeSettingsCleanup:
+    def test_upgrade_removes_stale_memgram_entry(self, tmp_project):
+        """After upgrade, the stale 'memgram' MCP entry is removed from settings.json."""
+        from codebase_context.cli import _remove_stale_mcp_entries
+        settings_path = Path(tmp_project) / ".claude" / "settings.json"
+        settings_path.parent.mkdir(exist_ok=True)
+        settings_path.write_text(json.dumps({
+            "mcpServers": {
+                "codebase-context": {"command": "ccindex", "args": ["serve"]},
+                "memgram": {"command": "ccindex", "args": ["mem-serve"]},
+            }
+        }), encoding="utf-8")
+
+        _remove_stale_mcp_entries(str(tmp_project))
+
+        data = json.loads(settings_path.read_text())
+        assert "memgram" not in data["mcpServers"]
+        assert "codebase-context" in data["mcpServers"]
+
+    def test_upgrade_no_op_when_no_memgram_entry(self, tmp_project):
+        """No error when memgram entry is already absent."""
+        from codebase_context.cli import _remove_stale_mcp_entries
+        settings_path = Path(tmp_project) / ".claude" / "settings.json"
+        settings_path.parent.mkdir(exist_ok=True)
+        settings_path.write_text(json.dumps({
+            "mcpServers": {"codebase-context": {"command": "ccindex", "args": ["serve"]}}
+        }), encoding="utf-8")
+
+        _remove_stale_mcp_entries(str(tmp_project))  # Should not raise
+
+        data = json.loads(settings_path.read_text())
+        assert "codebase-context" in data["mcpServers"]
+
+    def test_upgrade_no_op_when_no_settings_file(self, tmp_project):
+        """No error when .claude/settings.json does not exist."""
+        from codebase_context.cli import _remove_stale_mcp_entries
+        _remove_stale_mcp_entries(str(tmp_project))  # Should not raise
+
+
+# ---------------------------------------------------------------------------
+# _write_session_protocol sentinel
+# ---------------------------------------------------------------------------
+
+def test_write_session_protocol_uses_narrative_context_sentinel(tmp_project):
+    from codebase_context.cli import _write_session_protocol
+    claude_md = Path(tmp_project) / "CLAUDE.md"
+    _write_session_protocol(str(tmp_project))
+    text = claude_md.read_text()
+    assert "narrative_context" in text
+    assert "mem_context" not in text

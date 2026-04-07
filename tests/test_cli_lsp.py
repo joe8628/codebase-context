@@ -48,7 +48,7 @@ def test_init_npm_install_runs_on_confirm(tmp_path):
     with patch("codebase_context.indexer.Indexer", return_value=_mock_indexer()), \
          patch("codebase_context.cli.shutil.which", return_value=None), \
          patch("codebase_context.cli.subprocess.run", mock_run):
-        runner.invoke(cli, ["--root", str(tmp_path), "init"], input="n\nn\ny\nn\nn\n")
+        runner.invoke(cli, ["--root", str(tmp_path), "init"], input="n\ny\nn\nn\n")
     npm_calls = [c for c in mock_run.call_args_list if "npm" in str(c)]
     assert len(npm_calls) > 0
 
