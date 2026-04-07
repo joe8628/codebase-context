@@ -41,3 +41,37 @@ def test_different_threads_get_different_connections(tmp_path):
 
     main_conn = get_connection(str(tmp_path))
     assert results[0] is not main_conn
+
+
+def test_db_filename_creates_named_db_file(tmp_path):
+    from codebase_context.db import get_connection
+    get_connection(str(tmp_path), db_filename="memgram.db")
+    assert (tmp_path / ".codebase-context" / "memgram.db").exists()
+
+
+def test_different_filenames_return_different_connections(tmp_path):
+    from codebase_context.db import get_connection
+    conn1 = get_connection(str(tmp_path), db_filename="memory.db")
+    conn2 = get_connection(str(tmp_path), db_filename="memgram.db")
+    assert conn1 is not conn2
+
+
+def test_same_filename_same_thread_returns_cached_connection(tmp_path):
+    from codebase_context.db import get_connection
+    conn1 = get_connection(str(tmp_path), db_filename="memgram.db")
+    conn2 = get_connection(str(tmp_path), db_filename="memgram.db")
+    assert conn1 is conn2
+
+
+def test_default_filename_is_memory_db(tmp_path):
+    from codebase_context.db import get_connection
+    get_connection(str(tmp_path))
+    assert (tmp_path / ".codebase-context" / "memory.db").exists()
+
+
+def test_different_project_roots_return_different_connections(tmp_path, tmp_path_factory):
+    from codebase_context.db import get_connection
+    root2 = tmp_path_factory.mktemp("other")
+    conn1 = get_connection(str(tmp_path))
+    conn2 = get_connection(str(root2))
+    assert conn1 is not conn2

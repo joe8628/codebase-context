@@ -5,20 +5,18 @@ import sqlite3
 import threading
 from pathlib import Path
 
-DB_PATH = ".codebase-context/memory.db"
 _local = threading.local()
 
 
-def get_connection(project_root: str) -> sqlite3.Connection:
-    """Return a per-thread SQLite connection for the given project root.
+def get_connection(project_root: str, db_filename: str = "memory.db") -> sqlite3.Connection:
+    """Return a per-thread SQLite connection for the given project root and db file.
 
-    Uses threading.local() so each thread gets its own connection — the correct
-    pattern for sqlite3 under concurrent MCP tool calls. WAL mode allows concurrent
-    readers alongside a single writer.
+    Each (project_root, db_filename) pair gets its own per-thread connection.
+    WAL mode allows concurrent readers alongside a single writer.
     """
-    key = f"conn_{project_root}"
+    key = f"conn\x00{project_root}\x00{db_filename}"
     if not hasattr(_local, key):
-        path = Path(project_root) / DB_PATH
+        path = Path(project_root) / ".codebase-context" / db_filename
         path.parent.mkdir(parents=True, exist_ok=True)
         conn = sqlite3.connect(str(path))
         conn.row_factory = sqlite3.Row
