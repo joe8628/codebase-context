@@ -199,11 +199,10 @@ def test_run_migration_records_saved_to_store(tmp_path):
 
     (tmp_path / "HANDOFF.md").write_text(_HANDOFF_TEXT, encoding="utf-8")
     (tmp_path / "DECISIONS.md").write_text(_DECISIONS_TEXT, encoding="utf-8")
-    (tmp_path / ".claude").mkdir()
 
     run_migration(str(tmp_path))
 
-    store = MemgramStore(str(tmp_path / ".claude" / "memgram.db"))
+    store = MemgramStore(str(tmp_path))
     records = store.context(limit=10)
     types = [r["type"] for r in records]
     assert "handoff" in types
@@ -253,3 +252,30 @@ def test_cli_migrate_prints_both_counts(tmp_path):
     assert result.exit_code == 0
     assert "1 handoff" in result.output
     assert "2 decision" in result.output
+
+
+def test_run_migration_archives_old_memgram_db(tmp_path):
+    """If .claude/memgram.db exists, it is renamed to .migrated."""
+    claude_dir = tmp_path / ".claude"
+    claude_dir.mkdir()
+    old_db = claude_dir / "memgram.db"
+    old_db.write_bytes(b"fake db content")
+
+    run_migration(str(tmp_path))
+
+    assert not old_db.exists()
+    assert (claude_dir / "memgram.db.migrated").exists()
+
+
+def test_run_migration_writes_to_codebase_context_memgram_db(tmp_path):
+    """HANDOFF.md records go to .codebase-context/memgram.db after migration."""
+    (tmp_path / "HANDOFF.md").write_text(_HANDOFF_TEXT, encoding="utf-8")
+    run_migration(str(tmp_path))
+    assert (tmp_path / ".codebase-context" / "memgram.db").exists()
+
+
+def test_run_migration_no_error_when_no_old_memgram_db(tmp_path):
+    """Migration succeeds even if .claude/memgram.db does not exist."""
+    (tmp_path / "HANDOFF.md").write_text(_HANDOFF_TEXT, encoding="utf-8")
+    handoff_count, _ = run_migration(str(tmp_path))
+    assert handoff_count == 1
