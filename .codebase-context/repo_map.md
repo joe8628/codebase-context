@@ -1,5 +1,5 @@
 # Repo Map
-# Generated: 2026-03-27T21:44:49  |  Files: 50  |  Symbols: 426
+# Generated: 2026-04-28T18:56:39  |  Files: 51  |  Symbols: 438
 # Reference this in CLAUDE.md with: @.codebase-context/repo_map.md
 
 ---
@@ -20,7 +20,7 @@
   + _parse_version(v: str) -> tuple[int, ...]:
 
 ## codebase_context/db.py
-  + get_connection(project_root: str) -> sqlite3.Connection:
+  + get_connection(project_root: str, db_filename: str = "memory.db") -> sqlite3.Connection:
 
 ## codebase_context/embedder.py
   class Embedder:
@@ -164,7 +164,7 @@
     + test_no_old_mcp_json_message(self, tmp_project):
   class TestSetupMemgram:
     + test_registers_ccindex_mem_serve(self, tmp_project):
-    + test_sets_memgram_data_dir_to_claude_dir(self, tmp_project):
+    + test_memgram_mcp_entry_has_no_env(self, tmp_project):
     + test_skips_if_entry_already_present(self, tmp_project):
     + test_skips_when_user_declines(self, tmp_project):
   class TestSetupExternalDeps:
@@ -215,6 +215,11 @@
   + test_db_file_created_at_expected_path(tmp_path):
   + test_wal_mode_enabled(tmp_path):
   + test_different_threads_get_different_connections(tmp_path):
+  + test_db_filename_creates_named_db_file(tmp_path):
+  + test_different_filenames_return_different_connections(tmp_path):
+  + test_same_filename_same_thread_returns_cached_connection(tmp_path):
+  + test_default_filename_is_memory_db(tmp_path):
+  + test_different_project_roots_return_different_connections(tmp_path, tmp_path_factory):
 
 ## tests/test_embedder.py
   + _make_local_model(base: Path, folder_name: str) -> Path:
@@ -312,9 +317,16 @@
   + test_handle_record_change_manifest_returns_count(tmp_path):
   + test_handle_get_change_manifest_returns_records(tmp_path):
 
+## tests/test_memgram_mcp.py
+  + test_db_path_removed():
+
 ## tests/test_memgram_store.py
   + test_save_returns_id(store):
   + test_save_increments_id(store):
+  + test_save_rejects_unknown_type(store):
+  + test_valid_observation_types_contains_expected():
+  + test_created_at_is_unix_integer(store):
+  + test_db_file_in_codebase_context_dir(tmp_path):
   + test_context_empty_on_fresh_db(store):
   + test_context_returns_saved_memories(store):
   + test_context_respects_limit(store):
@@ -346,6 +358,8 @@
   + test_get_manifest_empty_for_unknown_task(store):
   + test_get_manifest_scoped_to_task(store):
   + test_manifest_record_has_required_fields(store):
+  + test_valid_event_types_constant_exists():
+  + test_store_event_rejects_unknown_type(store):
 
 ## tests/test_migrate.py
   + test_parse_handoff_blocks_extracts_one_real_block():
@@ -467,7 +481,6 @@
     + shutdown(self) -> None:
 
 ## codebase_context/memgram/mcp_server.py
-  + _db_path() -> str:
   + _format_memories(memories: list[dict]) -> str:
   + _handle_mem_save(store, arguments: dict):
   + _handle_mem_context(store, arguments: dict):
@@ -478,7 +491,8 @@
 
 ## codebase_context/memgram/store.py
   class MemgramStore:
-    + __init__(self, db_path: str) -> None:
+    + __init__(self, project_root: str) -> None:
+    + _conn(self):
     + save(self, title: str, content: str, type: str = "handoff") -> int:
     + context(self, limit: int = 10) -> list[dict]:
     + search(self, query: str, type: str | None = None, limit: int = 10) -> list[dict]:
