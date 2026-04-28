@@ -1,8 +1,8 @@
 # codebase-context
 
 > A self-contained, locally-running context management tool for Claude Code agents.
-> Provides every agent session with a live repo map and on-demand semantic code retrieval
-> via an MCP server — no external APIs, no Docker, no shared infrastructure.
+> Provides every agent session with on-demand semantic code retrieval and cross-session
+> narrative memory via a single MCP server — no external APIs, no Docker, no shared infrastructure.
 
 ## Install
 
@@ -80,8 +80,9 @@ uv pip install --no-index --find-links dist/wheels/ codebase-context
 ccindex upgrade
 ```
 
-This detects your install method (uv, pipx, or pip) and upgrades to the latest
-version from GitHub automatically.
+This detects your install method (uv, pipx, or pip), upgrades to the latest version
+from GitHub, and removes any stale MCP entries (e.g. the old `memgram` server) from
+`.claude/settings.json` automatically.
 
 ## Quick Start
 
@@ -95,27 +96,17 @@ This will:
 - Build a local vector index in `.codebase-context/chroma/`
 - Generate `.codebase-context/repo_map.md`
 - Add `.codebase-context/` entries to `.gitignore`
-- Prompt to add `@.codebase-context/repo_map.md` to `CLAUDE.md`
 - Prompt to install a git post-commit hook for auto-reindexing
+- Register the MCP server in `.claude/settings.json`
+- Append the session protocol to `CLAUDE.md`
 
 > **First run note:** Downloads the Jina embedding model (~200MB ONNX) to `~/.cache/fastembed/`.
 > No GPU or CUDA packages required. Subsequent runs use the cached model.
 
-## CLAUDE.md Setup
-
-Add one line to your project's `CLAUDE.md`:
-
-```markdown
-@.codebase-context/repo_map.md
-```
-
-Every Claude Code session will then start with the full repo map in context.
-
 ## MCP Server Setup
 
-`ccindex init` adds the MCP server entry automatically. If you need to add it
-manually, add it to `.claude/settings.json` (per-project) or
-`~/.claude/settings.json` (global):
+`ccindex init` registers the MCP server automatically. To add it manually, edit
+`.claude/settings.json` (per-project) or `~/.claude/settings.json` (global):
 
 ```json
 {
@@ -129,20 +120,73 @@ manually, add it to `.claude/settings.json` (per-project) or
 }
 ```
 
+A single `ccindex serve` process now hosts all 11 MCP tools — code search, repo map,
+narrative memory, and agent coordination.
+
 ## MCP Tools Available to Agents
+
+### Code Search (Layer 1)
 
 | Tool | Description |
 |------|-------------|
 | `search_codebase` | Semantic search — find functions, classes, methods by natural language |
 | `get_symbol` | Exact lookup by symbol name (case-sensitive) |
-| `get_repo_map` | Get fresh repo map mid-session |
+| `get_repo_map` | Full repo map — all files, classes, function signatures (~8k tokens, call sparingly) |
+
+### Narrative Memory (Layer 3a) — cross-session
+
+| Tool | Description |
+|------|-------------|
+| `narrative_save` | Save a cross-session observation (finding, decision, bugfix, handoff) |
+| `narrative_context` | Load the most recent memories at session start |
+| `narrative_search` | Full-text search over saved memories, optionally filtered by type |
+| `narrative_session_end` | Record a session-end summary |
+
+### Agent Coordination (Layer 3b) — same-session
+
+| Tool | Description |
+|------|-------------|
+| `coord_store_event` | Record an agent event (task_started, decision, error, …) |
+| `coord_recall_events` | Search events by content, agent, or type |
+| `coord_record_manifest` | Record which files a task changed |
+| `coord_get_manifest` | Retrieve the change manifest for a task |
+
+## Session Protocol
+
+Add this to your project's `CLAUDE.md` (or let `ccindex init` do it automatically):
+
+```markdown
+## Session Protocol
+
+**At the start of every session:**
+1. Run `git pull`.
+2. Call `narrative_context` (ccindex MCP) to load prior memories for this project.
+3. Read `CONVENTIONS.md`.
+
+**During every session:**
+- After each significant finding, bugfix, or decision: call `narrative_save`.
+
+**After every completed feature or fix:**
+1. Call `narrative_save` summarising what was completed (`type: handoff`).
+2. Call `narrative_session_end` with a one-line summary.
+```
+
+## Agent Navigation Guide
+
+Agents should use this order when exploring the codebase:
+
+1. **`search_codebase` / `get_symbol`** — for targeted queries: finding a symbol, concept search, locating a utility. ~50–500 tokens per call.
+2. **`get_repo_map`** — only when you need a full structural overview: new file placement, architecture questions, cross-cutting changes. ~8k tokens — call sparingly.
+3. **`Grep` tool** — for content patterns in any file, including languages not in the index.
+4. **`Glob` tool** — for finding files by name pattern (e.g. `**/*.sh`).
+5. **`Read`** — only after you have located the right file via one of the above.
 
 ## CLI Reference
 
 ```
 ccindex init            Full index of current project
 ccindex update          Incremental index (changed files only)
-ccindex upgrade         Upgrade codebase-context to latest version from GitHub
+ccindex upgrade         Upgrade to latest version; clean up stale MCP settings
 ccindex version         Show installed version and check for updates
 ccindex watch           Real-time file watcher
 ccindex search <query>  Semantic search from terminal
@@ -152,14 +196,16 @@ ccindex search <query>  Semantic search from terminal
 ccindex map             Print repo map to stdout
 ccindex stats           Show index statistics
 ccindex clear           Delete index and repo map (--confirm required)
-ccindex doctor          Check binaries and MCP setup
+ccindex doctor          Check binaries and re-register MCP server if missing
 ccindex install-hook    Install git post-commit hook
 ccindex uninstall-hook  Remove git post-commit hook
-ccindex serve           Start MCP server (used by Claude Code)
-ccindex mem-serve       Start memgram memory MCP server (used by Claude Code)
-ccindex migrate         Migrate HANDOFF.md / DECISIONS.md into memgram
+ccindex serve           Start MCP server (code search + narrative memory + coordination)
+ccindex migrate         Migrate HANDOFF.md / DECISIONS.md into narrative memory store
 ccindex release         Bump version, tag, push, create GitHub Release
 ```
+
+> **`ccindex mem-serve` is deprecated.** Narrative memory tools are now served by
+> `ccindex serve`. Run `ccindex upgrade` to clean up your project settings.
 
 ## Adding New Languages
 
@@ -167,7 +213,7 @@ ccindex release         Bump version, tag, push, create GitHub Release
 2. Add an entry to `LANGUAGES` in `codebase_context/config.py`
 3. Run `ccindex update`
 
-No other code changes required. See `CODEBASE_CONTEXT.md` for the full spec.
+No other code changes required.
 
 ## Supported Languages
 
@@ -182,7 +228,7 @@ No other code changes required. See `CODEBASE_CONTEXT.md` for the full spec.
 
 ## Per-Teammate Setup
 
-The `.claude/mcp.json` and updated `CLAUDE.md` are committed to the repo.
+`.claude/settings.json` and `CLAUDE.md` are committed to the repo.
 Each teammate just needs to:
 
 ```bash

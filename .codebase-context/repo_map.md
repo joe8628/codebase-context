@@ -43,16 +43,21 @@
 
 ## codebase_context/mcp_server.py
   + _setup_logging(project_root: str) -> None:
+  + _check_old_memgram_schema(project_root: str) -> None:
   + run_server() -> None:
   + _run_server(server) -> None:
   + _handle_search(retriever, arguments: dict):
   + _handle_get_symbol(retriever, arguments: dict):
   + _handle_get_repo_map(retriever, project_root: str):
-  + _handle_store_memory(memory_store, arguments: dict):
-  + _handle_recall_memory(memory_store, arguments: dict):
-  + _handle_record_change_manifest(memory_store, arguments: dict):
-  + _handle_get_change_manifest(memory_store, arguments: dict):
-  + _handle_lsp_tool(
+  + _format_memories(memories: list[dict]) -> str:
+  + _handle_narrative_save(narrative_store, arguments: dict):
+  + _handle_narrative_context(narrative_store, arguments: dict):
+  + _handle_narrative_search(narrative_store, arguments: dict):
+  + _handle_narrative_session_end(narrative_store, arguments: dict):
+  + _handle_coord_store_event(memory_store, arguments: dict):
+  + _handle_coord_recall_events(memory_store, arguments: dict):
+  + _handle_coord_record_manifest(memory_store, arguments: dict):
+  + _handle_coord_get_manifest(memory_store, arguments: dict):
 
 ## codebase_context/memory_store.py
   class MemoryStore:
@@ -306,16 +311,22 @@
   + test_custom_cmds_override_defaults():
 
 ## tests/test_mcp_lsp_tools.py
-  + test_all_lsp_tool_names_present_in_source():
-  + test_lsp_handler_imports_present_in_source():
-  + test_handle_lsp_tool_returns_text_content():
+  + test_lsp_tools_absent_from_list_tools():
+  + test_lsp_router_not_instantiated_in_run_server():
 
 ## tests/test_mcp_memory_tools.py
-  + test_memory_tool_names_present_in_source():
-  + test_handle_store_memory_returns_id(tmp_path):
-  + test_handle_recall_memory_returns_events(tmp_path):
-  + test_handle_record_change_manifest_returns_count(tmp_path):
-  + test_handle_get_change_manifest_returns_records(tmp_path):
+  + test_narrative_tool_names_in_source():
+  + test_coord_tool_names_in_source():
+  + test_old_tool_names_absent_from_source():
+  + test_handle_narrative_save_returns_id(tmp_path):
+  + test_handle_narrative_context_returns_formatted(tmp_path):
+  + test_handle_narrative_context_empty(tmp_path):
+  + test_handle_narrative_search_returns_results(tmp_path):
+  + test_handle_narrative_session_end_returns_success(tmp_path):
+  + test_handle_coord_store_event_returns_id(tmp_path):
+  + test_handle_coord_recall_events_returns_list(tmp_path):
+  + test_handle_coord_record_manifest_returns_count(tmp_path):
+  + test_handle_coord_get_manifest_returns_records(tmp_path):
 
 ## tests/test_memgram_mcp.py
   + test_db_path_removed():
@@ -385,6 +396,9 @@
   + test_cli_migrate_exits_1_when_already_migrated(tmp_path):
   + test_cli_migrate_nothing_to_migrate(tmp_path):
   + test_cli_migrate_prints_both_counts(tmp_path):
+  + test_run_migration_archives_old_memgram_db(tmp_path):
+  + test_run_migration_writes_to_codebase_context_memgram_db(tmp_path):
+  + test_run_migration_no_error_when_no_old_memgram_db(tmp_path):
 
 ## tests/test_parser.py
   + test_parse_python_class_and_methods():

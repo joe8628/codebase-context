@@ -1,4 +1,5 @@
-"""Migration helpers: parse HANDOFF.md / DECISIONS.md → MemgramStore."""
+"""Migration helpers: parse HANDOFF.md / DECISIONS.md → MemgramStore;
+archive old memgram.db from .claude/ to .codebase-context/."""
 
 from __future__ import annotations
 
@@ -60,11 +61,14 @@ def parse_decision_blocks(text: str) -> list[dict]:
 
 
 def run_migration(project_root: str) -> tuple[int, int]:
-    """Migrate HANDOFF.md and DECISIONS.md into MemgramStore.
+    """Migrate HANDOFF.md, DECISIONS.md, and old memgram.db into the new layout.
 
-    Inserts one record per block, then renames source files to *.migrated.
-    Raises AlreadyMigratedError if archive files already exist.
-    Returns (handoff_count, decision_count).
+    - Archives .claude/memgram.db → .claude/memgram.db.migrated (start fresh).
+    - Inserts HANDOFF.md and DECISIONS.md blocks into the new MemgramStore
+      (which writes to .codebase-context/memgram.db).
+    - Renames HANDOFF.md → HANDOFF.md.migrated and DECISIONS.md → DECISIONS.md.migrated.
+    - Raises AlreadyMigratedError if *.migrated archive files already exist.
+    - Returns (handoff_count, decision_count).
     """
     root = Path(project_root)
     handoff_path = root / "HANDOFF.md"
@@ -77,11 +81,17 @@ def run_migration(project_root: str) -> tuple[int, int]:
             "Migration has already been run — archive files (*.migrated) already exist."
         )
 
+    # Archive old memgram.db (start fresh — no data preservation)
+    old_memgram = root / ".claude" / "memgram.db"
+    archived_memgram = root / ".claude" / "memgram.db.migrated"
+    if old_memgram.exists() and not archived_memgram.exists():
+        old_memgram.rename(archived_memgram)
+
     if not handoff_path.exists() and not decisions_path.exists():
         return (0, 0)
 
-    db_path = str(root / ".claude" / "memgram.db")
-    store = MemgramStore(db_path)
+    # MemgramStore now takes project_root; writes to .codebase-context/memgram.db
+    store = MemgramStore(project_root)
 
     handoff_blocks: list[dict] = []
     decision_blocks: list[dict] = []
