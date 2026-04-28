@@ -14,6 +14,9 @@ MCP_LOG_PATH          = os.environ.get("CC_MCP_LOG_PATH", ".codebase-context/mcp
 SYMBOLS_CACHE_PATH    = os.environ.get("CC_SYMBOLS_CACHE_PATH", ".codebase-context/symbols_cache.json")
 DEFAULT_TOP_K    = int(os.environ.get("CC_DEFAULT_TOP_K", "10"))
 MAX_CHUNK_TOKENS = int(os.environ.get("CC_MAX_CHUNK_TOKENS", "512"))
+MEMGRAM_EMBED_MODEL = os.environ.get(
+    "CC_MEMGRAM_EMBED_MODEL", "jinaai/jina-embeddings-v2-base-code"
+)
 
 # Language registry
 LANGUAGES: dict[str, dict] = {
