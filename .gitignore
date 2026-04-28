@@ -15,14 +15,19 @@ models/
 .codebase-context/chroma/
 .codebase-context/index_meta.json
 .codebase-context/mcp.log
+.codebase-context/memgram.db
+.codebase-context/memory.db
+.codebase-context/symbols_cache.json
+
+# Claude Code runtime files
+.claude/memgram.db
 
 # Rig session files — ephemeral, not committed
 SCRATCHPAD.md
-
-# Codebase context — local vector DB, not committed
-.codebase-context/chroma/
-
 .rig-verified
+
+# Shell path expansion artifacts
+~/
 
 # Git worktrees
 .worktrees/
