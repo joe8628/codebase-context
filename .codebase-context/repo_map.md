@@ -1,5 +1,5 @@
 # Repo Map
-# Generated: 2026-04-07T13:52:44  |  Files: 50  |  Symbols: 452
+# Generated: 2026-04-28T18:56:39  |  Files: 51  |  Symbols: 438
 # Reference this in CLAUDE.md with: @.codebase-context/repo_map.md
 
 ---
@@ -169,7 +169,7 @@
     + test_no_old_mcp_json_message(self, tmp_project):
   class TestSetupMemgram:
     + test_registers_ccindex_mem_serve(self, tmp_project):
-    + test_sets_memgram_data_dir_to_claude_dir(self, tmp_project):
+    + test_memgram_mcp_entry_has_no_env(self, tmp_project):
     + test_skips_if_entry_already_present(self, tmp_project):
     + test_skips_when_user_declines(self, tmp_project):
   class TestSetupExternalDeps:
@@ -327,6 +327,9 @@
   + test_handle_coord_recall_events_returns_list(tmp_path):
   + test_handle_coord_record_manifest_returns_count(tmp_path):
   + test_handle_coord_get_manifest_returns_records(tmp_path):
+
+## tests/test_memgram_mcp.py
+  + test_db_path_removed():
 
 ## tests/test_memgram_store.py
   + test_save_returns_id(store):
@@ -492,7 +495,6 @@
     + shutdown(self) -> None:
 
 ## codebase_context/memgram/mcp_server.py
-  + _db_path() -> str:
   + _format_memories(memories: list[dict]) -> str:
   + _handle_mem_save(store, arguments: dict):
   + _handle_mem_context(store, arguments: dict):

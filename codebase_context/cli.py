@@ -653,11 +653,9 @@ def _setup_memgram(project_root: str) -> None:
             settings_path.parent.mkdir(parents=True, exist_ok=True)
             data = {}
 
-        memgram_data_dir = str(Path(project_root) / ".claude")
         data.setdefault("mcpServers", {})[_MEMGRAM_KEY] = {
             "command": "ccindex",
             "args": ["mem-serve"],
-            "env": {"MEMGRAM_DATA_DIR": memgram_data_dir},
         }
         settings_path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
         click.echo("  Added memgram MCP to .claude/settings.json")

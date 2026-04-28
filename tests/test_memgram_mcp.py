@@ -14,7 +14,12 @@ from codebase_context.memgram.mcp_server import (
 
 @pytest.fixture()
 def store(tmp_path):
-    return MemgramStore(str(tmp_path / "memgram.db"))
+    return MemgramStore(str(tmp_path))
+
+
+def test_db_path_removed():
+    import codebase_context.memgram.mcp_server as m
+    assert not hasattr(m, "_db_path")
 
 
 @pytest.mark.asyncio

@@ -167,7 +167,7 @@ class TestSetupMemgram:
         assert entry["command"] == "ccindex"
         assert entry["args"] == ["mem-serve"]
 
-    def test_sets_memgram_data_dir_to_claude_dir(self, tmp_project):
+    def test_memgram_mcp_entry_has_no_env(self, tmp_project):
         runner = CliRunner()
         runner.invoke(
             cli,
@@ -177,8 +177,8 @@ class TestSetupMemgram:
         )
         settings = tmp_project / ".claude" / "settings.json"
         data = json.loads(settings.read_text())
-        env = data["mcpServers"]["memgram"]["env"]
-        assert env["MEMGRAM_DATA_DIR"] == str(tmp_project / ".claude")
+        entry = data["mcpServers"]["memgram"]
+        assert "env" not in entry
 
     def test_skips_if_entry_already_present(self, tmp_project):
         # Pre-populate memgram — _setup_memgram must return early without prompting.

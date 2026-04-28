@@ -6,18 +6,11 @@ import asyncio
 import json
 import logging
 import os
-from pathlib import Path
 
 
 logger = logging.getLogger(__name__)
 
 _DEFAULT_LIMIT = 10
-
-
-def _db_path() -> str:
-    data_dir = os.environ.get("MEMGRAM_DATA_DIR") or str(Path.home() / ".memgram")
-    Path(data_dir).mkdir(parents=True, exist_ok=True)
-    return str(Path(data_dir) / "memgram.db")
 
 
 def _format_memories(memories: list[dict]) -> str:
@@ -77,7 +70,8 @@ def run_server() -> None:
 
     from codebase_context.memgram.store import MemgramStore
 
-    store = MemgramStore(_db_path())
+    project_root = os.getcwd()
+    store = MemgramStore(project_root)
     server = Server("memgram")
 
     @server.list_tools()
