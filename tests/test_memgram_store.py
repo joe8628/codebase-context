@@ -125,3 +125,41 @@ def test_save_with_embedder_stores_vector(tmp_path):
     assert row is not None
     vec = list(struct.unpack(f"{len([0.1, 0.2, 0.3])}f", row[0]))
     assert len(vec) == 3
+
+
+def test_search_hybrid_finds_semantic_match(tmp_path):
+    vecs = {"stateless tokens": [1.0, 0.0], "something else": [0.0, 1.0]}
+    stub = type("E", (), {
+        "embed_one": lambda self, t: vecs.get(
+            " ".join(t.split()[:2]) if len(t.split()) > 1 else t, [0.5, 0.5]
+        )
+    })()
+    s = MemgramStore(str(tmp_path), embedder=stub)
+    s.save("stateless tokens", "decided on auth", "decision")
+    s.save("something else", "unrelated", "handoff")
+    stub2 = type("E", (), {"embed_one": lambda self, t: [1.0, 0.0]})()
+    s._embedder = stub2
+    results = s.search("authentication approach")
+    assert results[0]["title"] == "stateless tokens"
+
+
+def test_search_without_embedder_falls_back_to_fts5(tmp_path):
+    s = MemgramStore(str(tmp_path))
+    s.save("JWT decision", "use JWT", "decision")
+    results = s.search("JWT")
+    assert results[0]["title"] == "JWT decision"
+
+
+def test_hybrid_prefers_results_matching_both_signals(tmp_path):
+    both_vec = [1.0, 0.0]
+    only_fts_vec = [0.0, 1.0]
+    stub = type("E", (), {
+        "embed_one": lambda self, t: both_vec if "overlap" in t else only_fts_vec
+    })()
+    s = MemgramStore(str(tmp_path), embedder=stub)
+    s.save("overlap keyword", "has overlap", "handoff")
+    s.save("keyword only", "has keyword", "handoff")
+    stub2 = type("E", (), {"embed_one": lambda self, t: [1.0, 0.0]})()
+    s._embedder = stub2
+    results = s.search("overlap keyword")
+    assert results[0]["title"] == "overlap keyword"
