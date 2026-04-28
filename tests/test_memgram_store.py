@@ -112,3 +112,16 @@ def test_session_end_saves_observation(store):
     assert len(results) == 1
     assert results[0]["type"] == "session_end"
     assert "Completed login feature" in results[0]["content"]
+
+
+def test_save_with_embedder_stores_vector(tmp_path):
+    import sqlite3
+    import struct
+    stub = type("E", (), {"embed_one": lambda self, t: [0.1, 0.2, 0.3]})()
+    s = MemgramStore(str(tmp_path), embedder=stub)
+    s.save("title", "content", "handoff")
+    db = sqlite3.connect(str(tmp_path / ".codebase-context" / "memgram.db"))
+    row = db.execute("SELECT embedding FROM observations_vec").fetchone()
+    assert row is not None
+    vec = list(struct.unpack(f"{len([0.1, 0.2, 0.3])}f", row[0]))
+    assert len(vec) == 3

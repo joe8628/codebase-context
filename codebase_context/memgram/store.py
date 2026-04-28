@@ -1,6 +1,7 @@
 """SQLite-backed narrative memory store with standalone FTS5."""
 from __future__ import annotations
 
+import struct
 import time
 
 VALID_OBSERVATION_TYPES = {
@@ -14,13 +15,18 @@ CREATE VIRTUAL TABLE IF NOT EXISTS observations USING fts5(
     type     UNINDEXED,
     created_at UNINDEXED
 );
+CREATE TABLE IF NOT EXISTS observations_vec (
+    rowid   INTEGER PRIMARY KEY,
+    embedding BLOB NOT NULL
+);
 """
 
 
 class MemgramStore:
-    def __init__(self, project_root: str) -> None:
+    def __init__(self, project_root: str, embedder=None) -> None:
         from codebase_context.db import get_connection
         self._project_root = project_root
+        self._embedder = embedder
         conn = get_connection(project_root, db_filename="memgram.db")
         conn.executescript(_SCHEMA)
         conn.commit()
@@ -40,8 +46,16 @@ class MemgramStore:
             "INSERT INTO observations (title, content, type, created_at) VALUES (?, ?, ?, ?)",
             (title, content, type, int(time.time())),
         )
+        rowid = cur.lastrowid
+        if self._embedder is not None:
+            vec = self._embedder.embed_one(title + " " + content)
+            blob = struct.pack(f"{len(vec)}f", *vec)
+            conn.execute(
+                "INSERT INTO observations_vec (rowid, embedding) VALUES (?, ?)",
+                (rowid, blob),
+            )
         conn.commit()
-        return cur.lastrowid  # type: ignore[return-value]
+        return rowid  # type: ignore[return-value]
 
     def context(self, limit: int = 10) -> list[dict]:
         """Return the *limit* most recent observations, newest first."""
