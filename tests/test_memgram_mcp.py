@@ -89,3 +89,23 @@ async def test_mem_session_end_returns_confirmation(store):
     # verify it was stored
     memories = store.context()
     assert any(m["type"] == "session_end" for m in memories)
+
+
+def test_run_server_passes_embedder_to_store(monkeypatch):
+    captured = {}
+    import codebase_context.memgram.store as ms
+    real_init = ms.MemgramStore.__init__
+
+    def fake_init(self, root, embedder=None):
+        captured["embedder"] = embedder
+        real_init(self, root, embedder=None)
+
+    monkeypatch.setattr(ms.MemgramStore, "__init__", fake_init)
+    monkeypatch.setattr(
+        "codebase_context.memgram.mcp_server._run_server",
+        lambda server: None,
+    )
+    monkeypatch.setattr("asyncio.run", lambda coro: None)
+    from codebase_context.memgram.mcp_server import run_server
+    run_server()
+    assert captured.get("embedder") is not None
