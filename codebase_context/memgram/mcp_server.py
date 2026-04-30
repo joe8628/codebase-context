@@ -68,10 +68,13 @@ def run_server() -> None:
     from mcp.server import Server
     from mcp import types
 
+    from codebase_context.embedder import Embedder
+    from codebase_context.config import MEMGRAM_EMBED_MODEL
     from codebase_context.memgram.store import MemgramStore
 
     project_root = os.getcwd()
-    store = MemgramStore(project_root)
+    embedder = Embedder(model_name=MEMGRAM_EMBED_MODEL)
+    store = MemgramStore(project_root, embedder=embedder)
     server = Server("memgram")
 
     @server.list_tools()
